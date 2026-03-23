@@ -1,0 +1,24 @@
+<html>
+<head>
+    <title>Delete Test</title>
+</head>
+<body>
+    <button onclick="testDelete()">Test Delete Alert</button>
+
+    <script>
+        function testDelete() {
+            console.log('Button clicked!');
+            const confirmed = confirm('⚠️ WARNING!\n\nAre you sure you want to DELETE ALL DATA?\n\n5 records will be permanently deleted.\n\nThis action CANNOT be undone!');
+            console.log('Confirmation result:', confirmed);
+            
+            if (confirmed) {
+                console.log('User clicked OK');
+                alert('User confirmed! Now would delete data.');
+            } else {
+                console.log('User clicked Cancel');
+                alert('User cancelled deletion.');
+            }
+        }
+    </script>
+</body>
+</html>
