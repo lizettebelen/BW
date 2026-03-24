@@ -555,6 +555,12 @@ Feel free to customize and deploy in your projects.
 
 ---
 
+## 👥 Contributors
+
+- **shairamacalindol** - Contributor
+
+---
+
 ## 🎉 Summary
 
 You now have a **production-ready, professional enterprise dashboard** with:
