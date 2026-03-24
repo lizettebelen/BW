@@ -1783,7 +1783,7 @@ if ($result) {
                 const blob = new Blob([excelXml], { type: 'application/vnd.ms-excel' });
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
-                link.download = filename + '.xlsx';
+                link.download = filename + '.xls';
                 link.click();
                 URL.revokeObjectURL(link.href);
                 showNotification(`✅ Exporting ${exportData.allDeliveries.length} complete records to Excel...`, 'success');
