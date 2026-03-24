@@ -1606,87 +1606,106 @@ if ($result) {
                 openPrintWindow('BW Gas Detector - Complete Data Export', exportHTML);
                 showNotification(`✅ Opening complete data export for PDF (${exportData.allDeliveries.length} records)...`, 'success');
             } else if (format === 'CSV') {
-                // Generate Excel XML with ALL complete delivery records
-                let xmlRows = '';
-                xmlRows += '<Row ss:Height="30"><Cell ss:StyleID="title" ss:MergeAcross="15"><Data ss:Type="String">BW Gas Detector - Complete Delivery Records Export</Data></Cell></Row>';
-                xmlRows += `<Row><Cell ss:MergeAcross="15"><Data ss:Type="String">Generated: ${new Date().toLocaleString()}</Data></Cell></Row>`;
-                xmlRows += '<Row></Row>';
+                // Build XML string step by step
+                let xmlContent = '<' + '?xml version="1.0" encoding="UTF-8"?>';
+                xmlContent += '<' + '?mso-application progid="Excel.Sheet"?>';
+                xmlContent += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
+                xmlContent += '<Styles>';
+                xmlContent += '<Style ss:ID="Default"><Font ss:FontName="Calibri" ss:Size="11"/></Style>';
+                xmlContent += '<Style ss:ID="titleStyle"><Font ss:FontName="Calibri" ss:Size="18" ss:Bold="1" ss:Color="#1a3a5c"/><Alignment ss:Horizontal="Left" ss:Vertical="Center"/></Style>';
+                xmlContent += '<Style ss:ID="dateStyle"><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#666666"/><Alignment ss:Horizontal="Left" ss:Vertical="Center"/></Style>';
+                xmlContent += '<Style ss:ID="summaryHeader"><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#003399" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/></Borders><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>';
+                xmlContent += '<Style ss:ID="detailHeader"><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#003399" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/></Borders><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>';
+                xmlContent += '<Style ss:ID="dataLight"><Font ss:FontName="Calibri" ss:Size="10"/><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CCCCCC"/></Borders><Alignment ss:Horizontal="Left" ss:Vertical="Center"/></Style>';
+                xmlContent += '<Style ss:ID="dataDark"><Font ss:FontName="Calibri" ss:Size="10"/><Interior ss:Color="#F5F5F5" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CCCCCC"/></Borders><Alignment ss:Horizontal="Left" ss:Vertical="Center"/></Style>';
+                xmlContent += '</Styles>';
+                xmlContent += '<Worksheet ss:Name="Report">';
+                xmlContent += '<Table ss:DefaultColumnWidth="100" ss:DefaultRowHeight="18">';
+                xmlContent += '<Column ss:Width="100"/><Column ss:Width="100"/><Column ss:Width="180"/><Column ss:Width="70"/><Column ss:Width="120"/><Column ss:Width="100"/><Column ss:Width="100"/><Column ss:Width="100"/>';
                 
-                // Summary section
-                xmlRows += '<Row><Cell ss:StyleID="section" ss:MergeAcross="1"><Data ss:Type="String">EXPORT SUMMARY</Data></Cell></Row>';
-                xmlRows += '<Row><Cell ss:StyleID="header"><Data ss:Type="String">Total Records</Data></Cell><Cell ss:StyleID="header"><Data ss:Type="Number">' + exportData.allDeliveries.length + '</Data></Cell></Row>';
-                xmlRows += `<Row><Cell ss:StyleID="cell"><Data ss:Type="String">Total Units</Data></Cell><Cell ss:StyleID="cell"><Data ss:Type="Number">${exportData.totalUnits}</Data></Cell></Row>`;
-                xmlRows += `<Row><Cell ss:StyleID="cell"><Data ss:Type="String">Total Orders</Data></Cell><Cell ss:StyleID="cell"><Data ss:Type="Number">${exportData.totalOrders}</Data></Cell></Row>`;
-                xmlRows += `<Row><Cell ss:StyleID="cell"><Data ss:Type="String">Active Clients</Data></Cell><Cell ss:StyleID="cell"><Data ss:Type="Number">${exportData.activeClients}</Data></Cell></Row>`;
-                xmlRows += '<Row></Row>';
+                // Title
+                xmlContent += '<Row ss:Height="30"><Cell ss:StyleID="titleStyle" ss:MergeAcross="6"><Data ss:Type="String">Product Model Report</Data></Cell></Row>';
+                xmlContent += '<Row ss:Height="18"><Cell ss:StyleID="dateStyle" ss:MergeAcross="6"><Data ss:Type="String">Generated: ' + new Date().toLocaleString() + '</Data></Cell></Row>';
+                xmlContent += '<Row></Row>';
                 
-                // All Delivery Records section
-                xmlRows += '<Row><Cell ss:StyleID="section" ss:MergeAcross="15"><Data ss:Type="String">ALL DELIVERY RECORDS (' + exportData.allDeliveries.length + ' total)</Data></Cell></Row>';
-                xmlRows += '<Row ss:Height="24">'
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Invoice No.</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Item Code</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Description</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Quantity</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">UOM</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Company</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Serial No.</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Delivery Date</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Delivery Month</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Delivery Day</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Year</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Sold To</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Sold To Month</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Sold To Day</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Remarks</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Groupings</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Status</Data></Cell>';
-                xmlRows += '</Row>';
+                // Summary header
+                xmlContent += '<Row ss:Height="24">';
+                xmlContent += '<Cell ss:StyleID="summaryHeader"><Data ss:Type="String">Item Code</Data></Cell>';
+                xmlContent += '<Cell ss:StyleID="summaryHeader"><Data ss:Type="String">Description</Data></Cell>';
+                xmlContent += '<Cell ss:StyleID="summaryHeader"><Data ss:Type="String">Orders</Data></Cell>';
+                xmlContent += '<Cell ss:StyleID="summaryHeader"><Data ss:Type="String">Units</Data></Cell>';
+                xmlContent += '</Row>';
                 
+                // Group and summarize data
+                const itemSummary = {};
                 exportData.allDeliveries.forEach(rec => {
-                    xmlRows += '<Row>';
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.invoice_no || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.item_code || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.item_name || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="Number">${rec.quantity || 0}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.uom || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.company_name || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.serial_no || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.delivery_date ? new Date(rec.delivery_date).toLocaleDateString() : ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.delivery_month || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.delivery_day || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="Number">${rec.delivery_year || 0}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.sold_to || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.sold_to_month || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.sold_to_day || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.notes || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.groupings || ''}</Data></Cell>`;
-                    xmlRows += `<Cell ss:StyleID="cell"><Data ss:Type="String">${rec.status || ''}</Data></Cell>`;
-                    xmlRows += '</Row>';
+                    const code = rec.item_code || 'Unknown';
+                    if (!itemSummary[code]) {
+                        itemSummary[code] = {
+                            code: code,
+                            description: rec.item_name || '',
+                            orders: 0,
+                            units: 0
+                        };
+                    }
+                    itemSummary[code].orders++;
+                    itemSummary[code].units += parseInt(rec.quantity || 0);
                 });
                 
-                const excelXml = `<` + `?xml version="1.0" encoding="UTF-8"?>
-<` + `?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
-<Styles>
-    <Style ss:ID="Default"><Font ss:FontName="Calibri" ss:Size="11"/></Style>
-    <Style ss:ID="title"><Font ss:FontName="Calibri" ss:Size="16" ss:Bold="1" ss:Color="#1a5490"/></Style>
-    <Style ss:ID="section"><Font ss:FontName="Calibri" ss:Size="12" ss:Bold="1" ss:Color="#333333"/><Interior ss:Color="#f4d03f" ss:Pattern="Solid"/></Style>
-    <Style ss:ID="header"><Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#2f5fa7" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/></Style>
-    <Style ss:ID="cell"><Font ss:FontName="Calibri" ss:Size="10"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E0E0E0"/></Borders></Style>
-</Styles>
-<Worksheet ss:Name="All Records">
-<Table>
-${xmlRows}</Table>
-</Worksheet>
-</Workbook>`;
+                // Add summary rows
+                let summaryIndex = 0;
+                Object.values(itemSummary).forEach((item) => {
+                    const rowStyle = summaryIndex % 2 === 0 ? 'dataLight' : 'dataDark';
+                    xmlContent += '<Row ss:Height="18">';
+                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (item.code || '') + '</Data></Cell>';
+                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (item.description || '') + '</Data></Cell>';
+                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="Number">' + item.orders + '</Data></Cell>';
+                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="Number">' + item.units + '</Data></Cell>';
+                    xmlContent += '</Row>';
+                    summaryIndex++;
+                });
                 
-                const blob = new Blob([excelXml], { type: 'application/vnd.ms-excel' });
+                xmlContent += '<Row></Row>';
+                
+                // Detail header
+                xmlContent += '<Row ss:Height="24">';
+                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Invoice</Data></Cell>';
+                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Item Code</Data></Cell>';
+                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Description</Data></Cell>';
+                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Qty</Data></Cell>';
+                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Company</Data></Cell>';
+                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Serial No.</Data></Cell>';
+                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Delivery Date</Data></Cell>';
+                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Status</Data></Cell>';
+                xmlContent += '</Row>';
+                
+                // Add detailed rows
+                exportData.allDeliveries.forEach((rec, index) => {
+                    const rowStyle = index % 2 === 0 ? 'dataLight' : 'dataDark';
+                    const deliveryDate = rec.delivery_date ? new Date(rec.delivery_date).toLocaleDateString() : '';
+                    xmlContent += '<Row ss:Height="18">';
+                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (rec.invoice_no || '') + '</Data></Cell>';
+                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (rec.item_code || '') + '</Data></Cell>';
+                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (rec.item_name || '') + '</Data></Cell>';
+                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="Number">' + (rec.quantity || 0) + '</Data></Cell>';
+                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (rec.company_name || '') + '</Data></Cell>';
+                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (rec.serial_no || '') + '</Data></Cell>';
+                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + deliveryDate + '</Data></Cell>';
+                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (rec.status || '') + '</Data></Cell>';
+                    xmlContent += '</Row>';
+                });
+                
+                xmlContent += '</Table></Worksheet></Workbook>';
+                
+                const blob = new Blob([xmlContent], { type: 'application/vnd.ms-excel; charset=utf-8' });
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
-                link.download = filename + '.csv';
+                link.download = filename + '.xls';
+                document.body.appendChild(link);
                 link.click();
+                document.body.removeChild(link);
                 URL.revokeObjectURL(link.href);
-                showNotification(`✅ Exporting ${exportData.allDeliveries.length} complete records to CSV...`, 'success');
+                showNotification(`✅ Exporting ${exportData.allDeliveries.length} complete records to Excel...`, 'success');
             } else if (format === 'XLSX') {
                 let xmlRows = '';
                 
