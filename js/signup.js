@@ -4,6 +4,7 @@
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Signup Page Loaded');
+    removeStrayLabelText();
     
     initializePasswordToggles();
     initializePasswordValidation();
@@ -12,6 +13,20 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeSocialSignup();
     initializeTermsCheckbox();
 });
+
+function removeStrayLabelText() {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const toRemove = [];
+
+    while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (node.nodeValue && node.nodeValue.trim() === '/label>') {
+            toRemove.push(node);
+        }
+    }
+
+    toRemove.forEach(node => node.remove());
+}
 
 // ============================================
 // PASSWORD TOGGLE

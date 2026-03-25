@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Sign Up - BW Gas Detector Sales Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,6 +16,47 @@
     <link rel="stylesheet" href="css/login.css">
 </head>
 <body>
+    <script>
+        // Remove any stray '/label>' text that may appear from stale/cached/injected markup.
+        document.addEventListener('DOMContentLoaded', function () {
+            function cleanupStrayLabelText() {
+                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                const nodes = [];
+                while (walker.nextNode()) {
+                    const n = walker.currentNode;
+                    if (n.nodeValue && n.nodeValue.indexOf('/label>') !== -1) {
+                        const cleaned = n.nodeValue.replace('/label>', '').trim();
+                        if (cleaned.length === 0) {
+                            nodes.push({ node: n, remove: true });
+                        } else {
+                            nodes.push({ node: n, remove: false, text: cleaned });
+                        }
+                    }
+                }
+
+                nodes.forEach(function (item) {
+                    if (item.remove) {
+                        item.node.remove();
+                    } else {
+                        item.node.nodeValue = item.text;
+                    }
+                });
+            }
+
+            cleanupStrayLabelText();
+
+            const observer = new MutationObserver(function () {
+                cleanupStrayLabelText();
+            });
+
+            observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+            setTimeout(function () {
+                observer.disconnect();
+            }, 5000);
+        });
+    </script>
+
     <!-- Gradient Background -->
     <div class="bg-gradient"></div>
 
@@ -103,8 +147,8 @@
                     </div>
 
                     <!-- Confirm Password Field -->
-                    <div class="form-group">
-                        <label for="confirmPassword" class="form-label">Confirm Password</label>/label>
+                    <div class="form-group confirm-password-group">
+                        <label for="confirmPassword" class="form-label">Confirm Password</label>
                         <div class="input-wrapper">
                             <i class="fas fa-lock"></i>
                             <input 
@@ -147,6 +191,6 @@
         <div class="floating-element float-3"></div>
     </div>
 
-    <script src="js/signup.js"></script>
+    <script src="js/signup.js?v=20260325a"></script>
 </body>
 </html>
