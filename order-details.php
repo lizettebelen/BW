@@ -30,19 +30,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'save_order') {
-        $customer = trim($_POST['customer'] ?? '');
+        $supplier = trim($_POST['supplier'] ?? '');
         $orderDate = trim($_POST['order_date'] ?? '');
         $itemCode = trim($_POST['item_code'] ?? '');
         $itemName = trim($_POST['item_name'] ?? '');
         $quantity = max(1, intval($_POST['quantity'] ?? 1));
-        $unitPrice = max(0, floatval($_POST['unit_price'] ?? 0));
+        $pesoCost = max(0, floatval($_POST['peso_cost'] ?? 0));
+        $foreignCost = trim($_POST['foreign_cost'] ?? '');
         $poNumber = trim($_POST['po_number'] ?? '');
         $poStatus = trim($_POST['po_status'] ?? 'No PO');
         $status = trim($_POST['status'] ?? 'Pending');
         $notes = trim($_POST['notes'] ?? '');
 
-        if ($customer === '' || $orderDate === '' || $itemCode === '' || $itemName === '') {
-            $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Customer, date, item code, and item name are required.'];
+        if ($supplier === '' || $orderDate === '' || $itemCode === '' || $itemName === '') {
+            $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Supplier, date, item code, and item name are required.'];
             header('Location: order-details.php?id=' . $orderId, true, 302);
             exit;
         }
@@ -52,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $poStatus = 'No PO';
         }
 
-        $allowedStatus = ['Pending', 'Ready for Delivery', 'In Transit', 'Delivered'];
+        $allowedStatus = ['Pending', 'Ready for Delivery', 'In Transit', 'Delivered', 'Received'];
         if (!in_array($status, $allowedStatus, true)) {
             $status = 'Pending';
         }
@@ -67,7 +68,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $deliveryMonth = $dt->format('F');
         $deliveryDay = intval($dt->format('j'));
         $deliveryYear = intval($dt->format('Y'));
-        $totalAmount = $quantity * $unitPrice;
+        $totalAmount = $quantity * $pesoCost;
+
+        // Add foreign cost to notes if provided
+        if ($foreignCost !== '') {
+            $notes = trim($notes . ' | Foreign Cost: ' . $foreignCost);
+        }
 
         $updateSql = "UPDATE delivery_records
                       SET order_customer = ?, order_date = ?, item_code = ?, item_name = ?,
@@ -80,12 +86,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($stmt) {
             $stmt->bind_param(
                 'ssssiddsssssiisi',
-                $customer,
+                $supplier,
                 $orderDate,
                 $itemCode,
                 $itemName,
                 $quantity,
-                $unitPrice,
+                $pesoCost,
                 $totalAmount,
                 $poNumber,
                 $poStatus,
@@ -99,7 +105,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
 
             if ($stmt->execute()) {
-                $_SESSION['order_detail_flash'] = ['type' => 'success', 'message' => 'Order updated successfully.'];
+                if ($poStatus === 'Received') {
+                    $conn->begin_transaction();
+                    try {
+                        // Move received order quantity into Stock Addition inventory.
+                        $checkInvStmt = $conn->prepare("SELECT id, quantity FROM delivery_records WHERE item_code = ? AND company_name = 'Stock Addition' LIMIT 1");
+                        if (!$checkInvStmt) {
+                            throw new Exception('Failed to prepare inventory lookup.');
+                        }
+                        $checkInvStmt->bind_param('s', $itemCode);
+                        if (!$checkInvStmt->execute()) {
+                            $checkInvStmt->close();
+                            throw new Exception('Failed to check inventory item.');
+                        }
+                        $invResult = $checkInvStmt->get_result();
+                        $invRow = $invResult ? $invResult->fetch_assoc() : null;
+                        $checkInvStmt->close();
+
+                        if ($invRow) {
+                            $newQty = intval($invRow['quantity'] ?? 0) + $quantity;
+                            $updateInvStmt = $conn->prepare("UPDATE delivery_records SET quantity = ?, status = 'Received', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND company_name = 'Stock Addition'");
+                            if (!$updateInvStmt) {
+                                throw new Exception('Failed to prepare inventory update.');
+                            }
+                            $invId = intval($invRow['id']);
+                            $updateInvStmt->bind_param('ii', $newQty, $invId);
+                            if (!$updateInvStmt->execute()) {
+                                $updateInvStmt->close();
+                                throw new Exception('Failed to update inventory quantity.');
+                            }
+                            $updateInvStmt->close();
+                        } else {
+                            $insertInvStmt = $conn->prepare("INSERT INTO delivery_records (delivery_month, delivery_day, delivery_year, item_code, item_name, company_name, quantity, unit_price, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'Stock Addition', ?, ?, 'Received', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+                            if (!$insertInvStmt) {
+                                throw new Exception('Failed to prepare inventory insert.');
+                            }
+                            $insertInvStmt->bind_param('siissid', $deliveryMonth, $deliveryDay, $deliveryYear, $itemCode, $itemName, $quantity, $pesoCost);
+                            if (!$insertInvStmt->execute()) {
+                                $insertInvStmt->close();
+                                throw new Exception('Failed to insert inventory item.');
+                            }
+                            $insertInvStmt->close();
+                        }
+
+                        $deleteOrderStmt = $conn->prepare("DELETE FROM delivery_records WHERE id = ? AND company_name = 'Orders'");
+                        if (!$deleteOrderStmt) {
+                            throw new Exception('Failed to prepare order delete.');
+                        }
+                        $deleteOrderStmt->bind_param('i', $orderId);
+                        if (!$deleteOrderStmt->execute()) {
+                            $deleteOrderStmt->close();
+                            throw new Exception('Failed to remove order after receiving.');
+                        }
+                        $deleteOrderStmt->close();
+
+                        $conn->commit();
+                        $_SESSION['highlight_item_code'] = strtoupper(trim($itemCode));
+                        $_SESSION['order_detail_flash'] = ['type' => 'success', 'message' => 'Order marked as Received and moved to Inventory.'];
+                        header('Location: inventory.php?tab=inventory&highlight=' . urlencode(strtoupper(trim($itemCode))), true, 302);
+                        exit;
+                    } catch (Exception $moveEx) {
+                        $conn->rollback();
+                        $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Order was updated but failed to move to inventory: ' . $moveEx->getMessage()];
+                    }
+                } else {
+                    $_SESSION['order_detail_flash'] = ['type' => 'success', 'message' => 'Order updated successfully.'];
+                }
             } else {
                 $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Failed to update order: ' . $stmt->error];
             }
@@ -171,6 +242,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($action === 'add_to_inventory') {
+        // Fetch the order details
+        $fetch = $conn->prepare("SELECT item_code, item_name, quantity, unit_price, po_status FROM delivery_records WHERE id = ? AND company_name = 'Orders' LIMIT 1");
+        if ($fetch) {
+            $fetch->bind_param('i', $orderId);
+            $fetch->execute();
+            $res = $fetch->get_result();
+            $order = $res ? $res->fetch_assoc() : null;
+            $fetch->close();
+
+            if (!$order) {
+                $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Order not found.'];
+                header('Location: order-details.php?id=' . $orderId, true, 302);
+                exit;
+            }
+
+            $itemCode = trim((string) ($order['item_code'] ?? ''));
+            $itemName = trim((string) ($order['item_name'] ?? ''));
+            $qty = intval($order['quantity'] ?? 1);
+            $unitPrice = floatval($order['unit_price'] ?? 0);
+            $poStatus = trim((string) ($order['po_status'] ?? 'No PO'));
+
+            // Check if PO Status is at least "Pending" or "Received" (must be received or in process)
+            if ($poStatus === 'No PO') {
+                $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Cannot add to inventory: PO Status must be set to Pending or Received.'];
+                header('Location: order-details.php?id=' . $orderId, true, 302);
+                exit;
+            }
+
+            // Check if item already exists in inventory
+            $checkStmt = $conn->prepare("SELECT id, quantity FROM delivery_records WHERE item_code = ? AND company_name = 'Stock Addition' LIMIT 1");
+            if ($checkStmt) {
+                $checkStmt->bind_param('s', $itemCode);
+                $checkStmt->execute();
+                $checkResult = $checkStmt->get_result();
+
+                if ($checkResult && $checkResult->num_rows > 0) {
+                    // Item exists - update quantity
+                    $existingRow = $checkResult->fetch_assoc();
+                    $existingQty = intval($existingRow['quantity'] ?? 0);
+                    $newQty = $existingQty + $qty;
+
+                    $updateInvStmt = $conn->prepare("UPDATE delivery_records SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND company_name = 'Stock Addition'");
+                    if ($updateInvStmt) {
+                        $updateInvStmt->bind_param('ii', $newQty, $existingRow['id']);
+                        $updateInvStmt->execute();
+                        $updateInvStmt->close();
+                    }
+                } else {
+                    // Item doesn't exist - insert new record
+                    $insertInvStmt = $conn->prepare("INSERT INTO delivery_records (item_code, item_name, company_name, quantity, unit_price, created_at, updated_at) VALUES (?, ?, 'Stock Addition', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+                    if ($insertInvStmt) {
+                        $insertInvStmt->bind_param('ssid', $itemCode, $itemName, $qty, $unitPrice);
+                        $insertInvStmt->execute();
+                        $insertInvStmt->close();
+                    }
+                }
+                $checkStmt->close();
+
+                // Store item code to highlight in inventory
+                $_SESSION['highlight_item_code'] = strtoupper(trim($itemCode));
+                $_SESSION['order_detail_flash'] = ['type' => 'success', 'message' => 'Item successfully added to inventory.'];
+                
+                header('Location: inventory.php?tab=inventory&highlight=' . urlencode(strtoupper(trim($itemCode))), true, 302);
+                exit;
+            }
+        }
+        
+        $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Failed to add item to inventory.'];
+        header('Location: order-details.php?id=' . $orderId, true, 302);
+        exit;
+    }
+
     if ($action === 'create_delivery_record') {
         $fetch = $conn->prepare("SELECT * FROM delivery_records WHERE id = ? AND company_name = 'Orders' LIMIT 1");
         if ($fetch) {
@@ -204,7 +348,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $deliveryYear = intval($_POST['delivery_year'] ?? 0);
             $uom = trim($_POST['uom'] ?? '');
             $serialNo = trim($_POST['serial_no'] ?? '');
-            $soldTo = trim($_POST['sold_to'] ?? $customerName);
+            $soldTo = trim($_POST['sold_to'] ?? $supplierName);
             $soldToMonth = trim($_POST['sold_to_month'] ?? '');
             $soldToDay = intval($_POST['sold_to_day'] ?? 0);
             $groupings = trim($_POST['groupings'] ?? '');
@@ -262,7 +406,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $redirectUrl = 'order-details.php?id=' . $orderId;
 
             if ($already) {
-                $_SESSION['order_detail_flash'] = ['type' => 'warning', 'message' => 'Delivery record already exists for this order.'];
+                $_SESSION['order_detail_flash'] = ['type' => 'warning', 'message' => 'Inventory receipt record already exists for this purchase order.'];
             } else {
                 $activeDataset = trim((string) ($_SESSION['active_dataset'] ?? ''));
                 if ($activeDataset === '' || strtolower($activeDataset) === 'all') {
@@ -310,7 +454,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $updateOrderStatus->execute();
                             $updateOrderStatus->close();
                         }
-                        $_SESSION['order_detail_flash'] = ['type' => 'success', 'message' => 'Delivery record created successfully. Order data has been copied.'];
+                        $_SESSION['order_detail_flash'] = ['type' => 'success', 'message' => 'Inventory receipt record created successfully. Purchase order data has been synced.'];
                         $redirectUrl = 'delivery-records.php?dataset=' . urlencode($activeDataset);
                     } else {
                         $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Failed to create delivery record: ' . $insert->error];
@@ -360,7 +504,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $deliveryYear = intval($today->format('Y'));
             $deliveryDate = $today->format('Y-m-d');
             $deliveryNotes = trim((string) ($order['notes'] ?? ''));
-            $deliveryNotes = trim($deliveryNotes . ' | From Sales Order ' . $orderRef);
+            $deliveryNotes = trim($deliveryNotes . ' | From Purchase Order ' . $orderRef);
 
             $existing = $conn->prepare("SELECT id FROM delivery_records WHERE company_name = ? AND invoice_no = ? AND notes LIKE ? LIMIT 1");
             $already = false;
@@ -428,8 +572,60 @@ if (!$order) {
     exit;
 }
 
+// Get all items in this order (group by order_date and optional po_number)
+$orderDate = $order['order_date'] ?? '';
+$poNumber = trim($order['po_number'] ?? '');
+$orderItems = [];
+
+if ($orderDate !== '') {
+    // First, try to get items with the same order_date AND po_number (if po_number is not empty)
+    if ($poNumber !== '') {
+        $itemsStmt = $conn->prepare("SELECT * FROM delivery_records 
+                                    WHERE company_name = 'Orders' 
+                                    AND order_date = ? 
+                                    AND po_number = ?
+                                    ORDER BY id ASC");
+        if ($itemsStmt) {
+            $itemsStmt->bind_param('ss', $orderDate, $poNumber);
+            $itemsStmt->execute();
+            $itemsResult = $itemsStmt->get_result();
+            if ($itemsResult) {
+                while ($item = $itemsResult->fetch_assoc()) {
+                    $orderItems[] = $item;
+                }
+            }
+            $itemsStmt->close();
+        }
+    } else {
+        // If no PO number, get all items for this order date without a specific PO number
+        $itemsStmt = $conn->prepare("SELECT * FROM delivery_records 
+                                    WHERE company_name = 'Orders' 
+                                    AND order_date = ?
+                                    AND (po_number = '' OR po_number IS NULL)
+                                    ORDER BY id ASC");
+        if ($itemsStmt) {
+            $itemsStmt->bind_param('s', $orderDate);
+            $itemsStmt->execute();
+            $itemsResult = $itemsStmt->get_result();
+            if ($itemsResult) {
+                while ($item = $itemsResult->fetch_assoc()) {
+                    $orderItems[] = $item;
+                }
+            }
+            $itemsStmt->close();
+        }
+    }
+}
+
 $unitPrice = floatval($order['unit_price'] ?? 0);
 $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['quantity'] ?? 0)));
+
+// Extract foreign cost from notes if present
+$foreignCostDisplay = '';
+$orderNotes = $order['notes'] ?? '';
+if (preg_match('/Foreign Cost:\s*([\d,]+\.?\d*)/', $orderNotes, $matches)) {
+    $foreignCostDisplay = $matches[1];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -448,7 +644,8 @@ $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['q
     <style>
         .page-header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:18px; flex-wrap:wrap; }
         .page-title { font-size:26px; color:#fff; margin:0; }
-        .back-link { color:#a9c1dd; text-decoration:none; font-weight:600; }
+        .back-link { color:#60a8ff; text-decoration:none; font-weight:700; display:inline-flex; align-items:center; gap:8px; padding:10px 16px; background:rgba(96, 168, 255, 0.12); border:1.5px solid rgba(96, 168, 255, 0.35); border-radius:8px; transition:all 0.25s ease; }
+        .back-link:hover { color:#ffffff; background:rgba(96, 168, 255, 0.25); border-color:rgba(96, 168, 255, 0.6); transform:translateX(-4px); box-shadow:0 4px 12px rgba(96, 168, 255, 0.2); }
         .flash { margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:14px; }
         .flash.success { background: rgba(46, 204, 113, 0.15); border: 1px solid rgba(46, 204, 113, 0.35); color: #b3f5cb; }
         .flash.error { background: rgba(231, 76, 60, 0.15); border: 1px solid rgba(231, 76, 60, 0.35); color: #ffd2cc; }
@@ -539,7 +736,10 @@ $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['q
         body.light-mode .page-title { color: #1a1a1a; }
         
         html.light-mode .back-link,
-        body.light-mode .back-link { color: #2f5fa7; }
+        body.light-mode .back-link { color: #2f5fa7; background: rgba(47, 95, 167, 0.08); border-color: rgba(47, 95, 167, 0.25); }
+        
+        html.light-mode .back-link:hover,
+        body.light-mode .back-link:hover { color: #ffffff; background: rgba(47, 95, 167, 0.25); border-color: rgba(47, 95, 167, 0.5); box-shadow: 0 4px 12px rgba(47, 95, 167, 0.15); }
         
         html.light-mode .card,
         body.light-mode .card { background: #ffffff; border-color: #d8e2ef; }
@@ -574,6 +774,19 @@ $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['q
             border-color: #d8e2ef;
             background: #f5f8fc;
             color: #1a1a1a;
+        }
+        
+        html.light-mode table th,
+        body.light-mode table th { 
+            color: #2f5fa7 !important;
+            border-bottom-color: #d8e2ef !important;
+        }
+        
+        html.light-mode table td,
+        body.light-mode table td { 
+            color: #3a4a5f !important;
+            border-bottom-color: #e8f0f8 !important;
+        }
         }
         
         html.light-mode .stat,
@@ -673,7 +886,6 @@ $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['q
                 <ul class="sidebar-menu">
                     <li class="menu-item"><a href="index.php" class="menu-link"><i class="fas fa-chart-line"></i><span class="menu-label">Dashboard</span></a></li>
                     <li class="menu-item"><a href="sales-overview.php" class="menu-link"><i class="fas fa-chart-pie"></i><span class="menu-label">Sales Overview</span></a></li>
-                    <li class="menu-item active"><a href="orders.php" class="menu-link"><i class="fas fa-file-invoice-dollar"></i><span class="menu-label">Orders</span></a></li>
                     <li class="menu-item"><a href="sales-records.php" class="menu-link"><i class="fas fa-calendar-alt"></i><span class="menu-label">Sales Records</span></a></li>
                     <li class="menu-item"><a href="delivery-records.php" class="menu-link"><i class="fas fa-truck"></i><span class="menu-label">Delivery Records</span></a></li>
                     <li class="menu-item"><a href="inventory.php" class="menu-link"><i class="fas fa-boxes"></i><span class="menu-label">Inventory</span></a></li>
@@ -688,8 +900,8 @@ $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['q
 
         <main class="main-content">
             <div class="page-header">
-                <h1 class="page-title">Order Details: <?php echo h(so_id($orderId)); ?></h1>
-                <a class="back-link" href="orders.php"><i class="fas fa-arrow-left"></i> Back to Orders</a>
+                <h1 class="page-title">Purchase Order: <?php echo h(so_id($orderId)); ?></h1>
+                <a class="back-link" href="inventory.php?tab=orders"><i class="fas fa-arrow-left"></i> Back to Orders</a>
             </div>
 
             <?php if ($flash): ?>
@@ -698,13 +910,13 @@ $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['q
 
             <div class="grid">
                 <div class="card">
-                    <h3><i class="fas fa-info-circle"></i>Order Information</h3>
+                    <h3><i class="fas fa-info-circle"></i>Purchase Order Details</h3>
                     <form method="post" action="order-details.php?id=<?php echo intval($orderId); ?>">
                         <input type="hidden" name="action" value="save_order">
                         <div class="form-grid">
                             <div class="form-group">
-                                <label>Customer</label>
-                                <input name="customer" type="text" value="<?php echo h($order['order_customer'] ?? ''); ?>" required>
+                                <label>Supplier</label>
+                                <input name="supplier" type="text" value="<?php echo h($order['order_customer'] ?? ''); ?>" required>
                             </div>
                             <div class="form-group">
                                 <label>Date</label>
@@ -723,8 +935,12 @@ $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['q
                                 <input name="quantity" type="number" min="1" value="<?php echo intval($order['quantity'] ?? 1); ?>" required>
                             </div>
                             <div class="form-group">
-                                <label>Unit Price</label>
-                                <input name="unit_price" type="number" min="0" step="0.01" value="<?php echo number_format($unitPrice, 2, '.', ''); ?>">
+                                <label>Foreign Cost</label>
+                                <input name="foreign_cost" type="text" value="<?php echo h($foreignCostDisplay); ?>" placeholder="e.g., 100.00 USD">
+                            </div>
+                            <div class="form-group">
+                                <label>Peso Cost</label>
+                                <input name="peso_cost" type="number" min="0" step="0.01" value="<?php echo number_format($unitPrice, 2, '.', ''); ?>" required>
                             </div>
                             <div class="form-group">
                                 <label>Status</label>
@@ -733,6 +949,7 @@ $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['q
                                     <option <?php echo (($order['status'] ?? '') === 'Ready for Delivery') ? 'selected' : ''; ?>>Ready for Delivery</option>
                                     <option <?php echo (($order['status'] ?? '') === 'In Transit') ? 'selected' : ''; ?>>In Transit</option>
                                     <option <?php echo (($order['status'] ?? '') === 'Delivered') ? 'selected' : ''; ?>>Delivered</option>
+                                    <option <?php echo (($order['status'] ?? '') === 'Received') ? 'selected' : ''; ?>>Received</option>
                                 </select>
                             </div>
                             <div class="form-group">
@@ -756,50 +973,90 @@ $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['q
                             <button class="btn" type="submit"><i class="fas fa-save"></i> Save Changes</button>
                         </div>
                     </form>
+
+                    <h3 style="margin-top:20px;"><i class="fas fa-list"></i>Order Items</h3>
+                    <div class="card-section">
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                <thead>
+                                    <tr style="border-bottom: 2px solid rgba(255,255,255,0.1);">
+                                        <th style="padding: 10px; text-align: left; color: #f4d03f; font-weight: 600;">Code</th>
+                                        <th style="padding: 10px; text-align: left; color: #f4d03f; font-weight: 600;">Product Name</th>
+                                        <th style="padding: 10px; text-align: center; color: #f4d03f; font-weight: 600;">Qty</th>
+                                        <th style="padding: 10px; text-align: right; color: #f4d03f; font-weight: 600;">Peso Cost</th>
+                                        <th style="padding: 10px; text-align: right; color: #f4d03f; font-weight: 600;">Foreign Cost</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($orderItems as $item): ?>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                        <td style="padding: 12px; color: #fff;"><?php echo h($item['item_code'] ?? ''); ?></td>
+                                        <td style="padding: 12px; color: #ccc;">
+                                            <div style="max-width: 200px; color: #fff;"><?php echo h($item['item_name'] ?? ''); ?></div>
+                                        </td>
+                                        <td style="padding: 12px; text-align: center; color: #fff;"><?php echo intval($item['quantity'] ?? 0); ?></td>
+                                        <td style="padding: 12px; text-align: right; color: #fff;">₱ <?php echo number_format(floatval($item['unit_price'] ?? 0), 2); ?></td>
+                                        <td style="padding: 12px; text-align: right; color: #fff;">
+                                            <?php 
+                                            $notes = $item['notes'] ?? '';
+                                            $foreignCost = 0;
+                                            if (preg_match('/Foreign Cost:\s*([\d,]+\.?\d*)/', $notes, $matches)) {
+                                                $foreignCost = floatval(str_replace(',', '', $matches[1]));
+                                            }
+                                            echo ($foreignCost > 0) ? '$ ' . number_format($foreignCost, 2) : '-';
+                                            ?>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="card">
                     <h3><i class="fas fa-credit-card"></i>Pricing Summary</h3>
-                    <div class="card-section">
-                        <div class="stat">Computed Total</div>
-                        <div class="value">PHP <?php echo number_format($totalAmount, 2); ?></div>
+                    <div class="card-section" style="background: linear-gradient(135deg, rgba(244, 208, 63, 0.15) 0%, rgba(244, 208, 63, 0.05) 100%); border-radius: 12px; padding: 20px; margin: 16px 0; border: 1.5px solid rgba(244, 208, 63, 0.3);">
+                        <div class="stat" style="font-size: 10px; letter-spacing: 1.2px; color: #d4a000; font-weight: 700; text-transform: uppercase;">Total Amount</div>
+                        <div class="value" style="font-size: 32px; color: #f4d03f; margin-top: 10px; font-weight: 900; letter-spacing: 0.5px;">PHP <?php echo number_format($totalAmount, 2); ?></div>
                     </div>
 
-                    <h3 style="margin-top:16px;"><i class="fas fa-file-invoice"></i>Invoice</h3>
-                    <div class="card-section">
-                        <div class="stat">Invoice Number</div>
-                        <div class="value"><?php echo h($order['invoice_no'] ?: 'Not generated'); ?></div>
-                        <form method="post" action="order-details.php?id=<?php echo intval($orderId); ?>">
-                            <input type="hidden" name="action" value="generate_invoice">
-                            <button class="btn secondary" type="submit"><i class="fas fa-file-invoice"></i> Generate Invoice</button>
-                        </form>
-                    </div>
-
-                    <h3 style="margin-top:16px;"><i class="fas fa-clipboard-check"></i>PO Section</h3>
-                    <div class="card-section">
-                        <?php
-                            $poClass = 'no-po';
-                            if (($order['po_status'] ?? '') === 'Pending') $poClass = 'pending';
-                            if (($order['po_status'] ?? '') === 'Received') $poClass = 'received';
-                        ?>
-                        <div class="stat">Current PO Status</div>
-                        <div class="value"><span class="pill <?php echo h($poClass); ?>"><?php echo h($order['po_status'] ?: 'No PO'); ?></span></div>
-                    </div>
-
-                    <h3 style="margin-top:16px;"><i class="fas fa-truck"></i>Delivery Actions</h3>
-                    <div class="card-section">
-                        <div class="stat">Manage delivery workflow for this order.</div>
-                        <div class="actions">
-                            <form method="post" action="order-details.php?id=<?php echo intval($orderId); ?>" style="flex:1;">
-                                <input type="hidden" name="action" value="mark_ready_for_delivery">
-                                <button class="btn secondary" type="submit" style="width:100%;"><i class="fas fa-check-circle"></i> Mark as Ready</button>
+                    <h3 style="margin-top:28px;"><i class="fas fa-file-invoice"></i>Reference Management</h3>
+                    <div class="card-section" style="padding: 16px;">
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 14px;">
+                            <div style="padding: 18px; background: linear-gradient(135deg, rgba(96, 168, 255, 0.2) 0%, rgba(96, 168, 255, 0.05) 100%); border-radius: 12px; border-left: 5px solid #60a8ff; border: 1.5px solid rgba(96, 168, 255, 0.3);">
+                                <div class="stat" style="font-size: 10px; color: #ffffff; letter-spacing: 0.8px; background: linear-gradient(135deg, #60a8ff 0%, #4a8fd9 100%); padding: 5px 10px; border-radius: 5px; display: inline-block; font-weight: 700; text-transform: uppercase;">Reference Number</div>
+                                <div style="color: #1a3a5c; font-weight: 800; font-size: 22px; margin-top: 10px; letter-spacing: 0.8px; font-family: 'Courier New', monospace;">
+                                    <?php echo h($order['invoice_no'] ?: 'Not Generated'); ?>
+                                </div>
+                            </div>
+                            <form method="post" action="order-details.php?id=<?php echo intval($orderId); ?>" style="width: 100%;">
+                                <input type="hidden" name="action" value="generate_invoice">
+                                <button class="btn secondary" type="submit" style="width: 100%; justify-content: center; background: linear-gradient(135deg, #60a8ff 0%, #4a8fd9 100%); border-color: #60a8ff; color: #fff; font-weight: 700;"><i class="fas fa-plus-circle"></i> Generate Reference Number</button>
                             </form>
-                            <button class="btn" type="button" id="openCreateDeliveryBtn" style="flex:1; justify-content:center;"><i class="fas fa-plus-circle"></i> Create Delivery</button>
                         </div>
-                        <p style="font-size:12px; color:#9fb1c5; margin-top:8px;"><i class="fas fa-info-circle"></i> Mark as Ready when the order is prepared. Create Delivery when it's shipped.</p>
                     </div>
-                    <div class="actions" style="margin-top:10px;">
-                        <a class="btn secondary" href="delivery-records.php" style="flex:1;justify-content:center;"><i class="fas fa-list"></i> View All Deliveries</a>
+
+                    <h3 style="margin-top:28px;"><i class="fas fa-receipt"></i>PO Management</h3>
+                    <div class="card-section" style="padding: 16px;">
+                        <div style="padding: 18px; background: rgba(255, 255, 255, 0.03); border-radius: 12px; border: 1.5px solid rgba(255, 255, 255, 0.1);">
+                            <div class="stat" style="font-size: 10px; color: #b8c2cf; margin-bottom: 14px; letter-spacing: 1.2px; text-transform: uppercase; font-weight: 700;">Purchase Order Status</div>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <i class="fas fa-check-circle" style="color: #f4d03f; font-size: 20px;"></i>
+                                <span style="<?php 
+                                    $poStatus = $order['po_status'] ?? 'No PO';
+                                    if ($poStatus === 'Pending') {
+                                        echo 'background: #f39c12; color: #fff;';
+                                    } elseif ($poStatus === 'Received') {
+                                        echo 'background: #27ae60; color: #fff;';
+                                    } else {
+                                        echo 'background: #e74c3c; color: #fff;';
+                                    }
+                                ?> padding: 9px 16px; border-radius: 8px; font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    <?php echo h($poStatus); ?>
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -812,17 +1069,17 @@ $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['q
                 <h2 class="delivery-modal-title" id="createDeliveryTitle"><i class="fas fa-truck"></i> Create Delivery Record</h2>
                 <button type="button" class="delivery-modal-close" id="closeCreateDeliveryBtn" aria-label="Close">&times;</button>
             </div>
-            <p class="delivery-form-hint">Complete required details before creating the delivery record.</p>
+            <p class="delivery-form-hint">Complete required details before creating the inventory receipt record from this purchase order.</p>
 
             <form method="post" action="order-details.php?id=<?php echo intval($orderId); ?>">
                 <input type="hidden" name="action" value="create_delivery_record">
                 <div class="form-grid">
                     <div class="form-group">
-                        <label>Invoice No.</label>
+                        <label>Reference No.</label>
                         <input type="text" value="<?php echo h($order['invoice_no'] ?? ''); ?>" readonly>
                     </div>
                     <div class="form-group">
-                        <label>Sold To *</label>
+                        <label>Received By / Location *</label>
                         <input type="text" name="sold_to" value="<?php echo h($order['order_customer'] ?? ''); ?>" required>
                     </div>
                     <div class="form-group">
@@ -850,7 +1107,7 @@ $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['q
                         <input type="text" name="serial_no" placeholder="e.g., MA225-000613" required>
                     </div>
                     <div class="form-group">
-                        <label>Sold To Month *</label>
+                        <label>Received Month *</label>
                         <select name="sold_to_month" required>
                             <option value="">Select Month...</option>
                             <option value="January">January</option>
@@ -868,7 +1125,7 @@ $totalAmount = floatval($order['total_amount'] ?? ($unitPrice * intval($order['q
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Sold To Day *</label>
+                        <label>Received Day *</label>
                         <input type="number" name="sold_to_day" min="1" max="31" required>
                     </div>
                     <div class="form-group">

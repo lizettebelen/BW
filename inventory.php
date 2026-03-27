@@ -45,6 +45,15 @@ if ($searchItem) {
 
 // Get all items with stock and delivery counts
 $items = [];
+$highlightItemCode = null;
+
+// Check for item to highlight (from purchase order auto-add)
+if (isset($_SESSION['highlight_item_code'])) {
+    $highlightItemCode = strtoupper(trim($_SESSION['highlight_item_code']));
+    unset($_SESSION['highlight_item_code']);
+} elseif (isset($_GET['highlight'])) {
+    $highlightItemCode = strtoupper(trim($_GET['highlight']));
+}
 $result = $conn->query("
     SELECT 
         id,
@@ -84,7 +93,8 @@ if ($result) {
             'actual_stock' => intval($row['current_stock']),
             'source_file' => $row['source_filename'] ? str_replace('File: ', '', $row['source_filename']) : '',
             'last_updated' => $lastUpdated,
-            'grouping' => identifyGrouping($itemName)
+            'grouping' => identifyGrouping($itemName),
+            'is_highlighted' => ($highlightItemCode && strtoupper($row['item_code']) === $highlightItemCode)
         ];
     }
 }
@@ -123,6 +133,24 @@ if ($filterStock !== 'all') {
         }
     });
     $items = array_values($items);
+}
+
+// Float highlighted item to the top
+if ($highlightItemCode) {
+    $highlightedItem = null;
+    $otherItems = [];
+    
+    foreach ($items as $item) {
+        if ($item['is_highlighted']) {
+            $highlightedItem = $item;
+        } else {
+            $otherItems[] = $item;
+        }
+    }
+    
+    if ($highlightedItem) {
+        $items = array_merge([$highlightedItem], $otherItems);
+    }
 }
 
 // Calculate stats
@@ -716,25 +744,31 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
 
         @keyframes newItemGlow {
             0% {
-                background: linear-gradient(90deg, rgba(34, 197, 94, 0.25) 0%, rgba(52, 211, 153, 0.15) 50%, rgba(34, 197, 94, 0.25) 100%);
-                box-shadow: 0 0 25px rgba(34, 197, 94, 0.4), inset 0 0 25px rgba(52, 211, 153, 0.15), 0 4px 12px rgba(34, 197, 94, 0.2);
+                background: linear-gradient(90deg, rgba(255, 215, 0, 0.3) 0%, rgba(255, 235, 59, 0.2) 50%, rgba(255, 215, 0, 0.3) 100%);
+                box-shadow: 0 0 25px rgba(255, 215, 0, 0.4), inset 0 0 25px rgba(255, 235, 59, 0.15), 0 4px 12px rgba(255, 215, 0, 0.2);
             }
             50% {
-                background: linear-gradient(90deg, rgba(52, 211, 153, 0.2) 0%, rgba(34, 197, 94, 0.25) 50%, rgba(52, 211, 153, 0.2) 100%);
-                box-shadow: 0 0 35px rgba(34, 197, 94, 0.5), inset 0 0 30px rgba(52, 211, 153, 0.2), 0 6px 16px rgba(34, 197, 94, 0.3);
+                background: linear-gradient(90deg, rgba(255, 235, 59, 0.25) 0%, rgba(255, 215, 0, 0.3) 50%, rgba(255, 235, 59, 0.25) 100%);
+                box-shadow: 0 0 35px rgba(255, 215, 0, 0.5), inset 0 0 30px rgba(255, 235, 59, 0.2), 0 6px 16px rgba(255, 215, 0, 0.3);
             }
             100% {
-                background: linear-gradient(90deg, rgba(34, 197, 94, 0.25) 0%, rgba(52, 211, 153, 0.15) 50%, rgba(34, 197, 94, 0.25) 100%);
-                box-shadow: 0 0 25px rgba(34, 197, 94, 0.4), inset 0 0 25px rgba(52, 211, 153, 0.15), 0 4px 12px rgba(34, 197, 94, 0.2);
+                background: linear-gradient(90deg, rgba(255, 215, 0, 0.3) 0%, rgba(255, 235, 59, 0.2) 50%, rgba(255, 215, 0, 0.3) 100%);
+                box-shadow: 0 0 25px rgba(255, 215, 0, 0.4), inset 0 0 25px rgba(255, 235, 59, 0.15), 0 4px 12px rgba(255, 215, 0, 0.2);
             }
         }
 
         .new-item-highlight {
             animation: newItemGlow 1.5s ease-in-out infinite !important;
-            border-left: 5px solid #22c55e !important;
-            border-top: 2px solid rgba(34, 197, 94, 0.5) !important;
-            border-bottom: 2px solid rgba(34, 197, 94, 0.5) !important;
+            background: linear-gradient(90deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 235, 59, 0.15) 50%, rgba(255, 215, 0, 0.25) 100%) !important;
+            border-left: 5px solid #ffd700 !important;
+            border-top: 2px solid rgba(255, 215, 0, 0.8) !important;
+            border-bottom: 2px solid rgba(255, 215, 0, 0.8) !important;
+            box-shadow: inset 0 0 20px rgba(255, 215, 0, 0.2), 0 0 15px rgba(255, 215, 0, 0.3) !important;
             position: relative;
+        }
+
+        .new-item-highlight td {
+            background: inherit !important;
         }
 
         .new-item-highlight td:first-child::before {
@@ -743,6 +777,21 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
             margin-right: 6px;
             font-size: 14px;
             animation: pulse 2s ease-in-out infinite;
+        }
+
+        .purchase-order-highlight {
+            outline: 3px solid rgba(52, 152, 219, 0.85);
+            outline-offset: -2px;
+        }
+
+        .purchase-order-highlight td:first-child::after {
+            content: ' NEW';
+            display: inline-block;
+            margin-left: 6px;
+            color: #3498db;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
         }
 
         .modal-header {
@@ -1315,6 +1364,267 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                 opacity: 1;
             }
         }
+
+        /* Create Order Modal Styles (from orders.php) - For Andison's internal Purchase Orders */
+        .create-order-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(7, 12, 22, 0.58);
+            backdrop-filter: blur(3px);
+            z-index: 1300;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .create-order-modal.show {
+            display: flex;
+        }
+        .create-order-dialog,
+        .form-card {
+            background: linear-gradient(135deg, #1e2a38 0%, #2a3f5f 100%);
+            border: 1px solid rgba(255,255,255,0.08);
+            width: min(1120px, 96vw);
+            max-height: 88vh;
+            overflow: auto;
+            border-radius: 14px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+            padding: 24px;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #d0dce6;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #f4d03f;
+            background: rgba(255,255,255,0.08);
+            box-shadow: 0 0 12px rgba(244, 208, 63, 0.15);
+        }
+        .form-group input::placeholder,
+        .form-group textarea::placeholder {
+            color: rgba(255,255,255,0.3);
+        }
+        .form-group textarea { 
+            min-height: 100px; 
+            resize: vertical;
+            font-family: 'Poppins', sans-serif;
+        }
+        .form-actions { 
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .save-order-btn {
+            flex: 1;
+            min-width: 140px;
+            justify-content: center;
+            background: linear-gradient(135deg, #f4d03f 0%, #f9d76a 100%);
+            color: #1a3a5c;
+            border: none;
+            padding: 14px 24px;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .save-order-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(244, 208, 63, 0.3);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            gap: 12px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .modal-title {
+            margin: 0;
+            color: #fff;
+            font-size: 22px;
+            font-weight: 800;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .modal-title i {
+            color: #f4d03f;
+        }
+        .close-btn {
+            border: 1px solid rgba(255,255,255,0.16);
+            background: rgba(255,255,255,0.06);
+            color: #d0dce6;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .close-btn:hover {
+            background: rgba(255,255,255,0.13);
+            color: #fff;
+        }
+
+        /* Light Mode Styling */
+        html.light-mode .create-order-modal,
+        body.light-mode .create-order-modal {
+            background: rgba(24, 61, 96, 0.22);
+        }
+        html.light-mode .create-order-dialog,
+        html.light-mode .form-card,
+        body.light-mode .create-order-dialog,
+        body.light-mode .form-card {
+            background: #ffffff;
+            border-color: #d8e2ef;
+        }
+        html.light-mode .modal-header,
+        body.light-mode .modal-header {
+            border-bottom-color: #e0e8f0;
+        }
+        html.light-mode .modal-title,
+        body.light-mode .modal-title {
+            color: #1a1a1a;
+        }
+        html.light-mode .form-group label,
+        body.light-mode .form-group label {
+            color: #2f4c68;
+        }
+        html.light-mode .form-group input,
+        html.light-mode .form-group select,
+        html.light-mode .form-group textarea,
+        body.light-mode .form-group input,
+        body.light-mode .form-group select,
+        body.light-mode .form-group textarea {
+            background: #f5f9fc;
+            border-color: #c8dae8;
+            color: #1a1a1a;
+        }
+        html.light-mode .form-group input:focus,
+        html.light-mode .form-group select:focus,
+        html.light-mode .form-group textarea:focus,
+        body.light-mode .form-group input:focus,
+        body.light-mode .form-group select:focus,
+        body.light-mode .form-group textarea:focus {
+            border-color: #1e88e5;
+            background: #ffffff;
+            box-shadow: 0 0 12px rgba(30, 136, 229, 0.15);
+        }
+        html.light-mode .form-group input::placeholder,
+        html.light-mode .form-group textarea::placeholder,
+        body.light-mode .form-group input::placeholder,
+        body.light-mode .form-group textarea::placeholder {
+            color: #9db3c4;
+        }
+        html.light-mode .save-order-btn,
+        body.light-mode .save-order-btn {
+            background: linear-gradient(135deg, #f4d03f 0%, #f9d76a 100%);
+            color: #1a3a5c;
+        }
+        html.light-mode .close-btn,
+        body.light-mode .close-btn {
+            border-color: #c8dae8;
+            background: #f5f9fc;
+            color: #2f4c68;
+        }
+        html.light-mode .close-btn:hover,
+        body.light-mode .close-btn:hover {
+            background: #eef6fd;
+            color: #1e4f7a;
+        }
+
+        @media (max-width: 860px) {
+            .create-order-dialog {
+                width: 100%;
+                max-height: 92vh;
+            }
+        }
+
+        /* Filter Chips Styling (for Orders tab) */
+        .filters {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+        }
+        .filter-chip {
+            padding: 8px 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #9fb1c5;
+            text-decoration: none;
+            font-size: 13px;
+            background: rgba(255,255,255,0.04);
+            transition: all 0.2s ease;
+            cursor: pointer;
+            display: inline-block;
+        }
+        .filter-chip:hover {
+            color: #d0dce6;
+            border-color: #f4d03f;
+        }
+        .filter-chip.active {
+            background: #2f5fa7;
+            border-color: #2f5fa7;
+            color: #fff;
+        }
+        html.light-mode .filter-chip,
+        body.light-mode .filter-chip {
+            background: #ffffff;
+            color: #3a6a8a;
+            border-color: #b8d4e8;
+        }
+        html.light-mode .filter-chip:hover,
+        body.light-mode .filter-chip:hover {
+            background: #eef6fd;
+            color: #1e4f7a;
+            border-color: #1e88e5;
+        }
+        html.light-mode .filter-chip.active,
+        body.light-mode .filter-chip.active {
+            background: #2f5fa7;
+            border-color: #2f5fa7;
+            color: #ffffff;
+            box-shadow: 0 4px 10px rgba(47, 95, 167, 0.25);
+        }
     </style>
     <script src="https://unpkg.com/@lottiefiles/dotlottie-wc@0.9.3/dist/dotlottie-wc.js" type="module"></script>
 </head>
@@ -1403,13 +1713,6 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                             <span class="menu-label">Sales Overview</span>
                         </a>
                     </li>
-
-                    <li class="menu-item">
-    <a href="orders.php" class="menu-link">
-        <i class="fas fa-file-invoice-dollar"></i>
-        <span class="menu-label">Orders</span>
-    </a>
-</li>
 
                     <li class="menu-item">
                         <a href="sales-records.php" class="menu-link">
@@ -1509,6 +1812,9 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                 <button class="add-stock-btn" style="background: linear-gradient(135deg, #f4d03f 0%, #f9d76a 100%);" onclick="openAddItemModal()">
                     <i class="fas fa-plus"></i> Add New Item
                 </button>
+                <button class="add-stock-btn" style="background: linear-gradient(135deg, #f4d03f 0%, #f9d76a 100%); display: none;" id="toggleCreateBtn">
+                    <i class="fas fa-plus"></i> Create Order
+                </button>
             </div>
 
             <!-- Tab Navigation -->
@@ -1517,7 +1823,7 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                     <i class="fas fa-boxes" style="margin-right: 6px;"></i> Inventory
                 </button>
                 <button class="tab-btn" onclick="openTab(event, 'orders-tab')">
-                    <i class="fas fa-shopping-cart" style="margin-right: 6px;"></i> Orders
+                    <i class="fas fa-shopping-cart" style="margin-right: 6px;"></i> Purchase Orders
                 </button>
             </div>
 
@@ -1727,9 +2033,9 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                             
                             // Check if item was added in last 30 minutes
                             $isNewItem = false;
-                            if (!empty($lastUpdated)) {
+                            if (!empty($item['last_updated'])) {
                                 try {
-                                    $updatedTime = strtotime($lastUpdated);
+                                    $updatedTime = strtotime($item['last_updated']);
                                     $currentTime = time();
                                     if ($updatedTime !== false) {
                                         $timeDiff = ($currentTime - $updatedTime) / 60; // difference in minutes
@@ -1739,7 +2045,9 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                                     $isNewItem = false;
                                 }
                             }
-                            $newItemClass = $isNewItem ? 'new-item-highlight' : '';
+                            $isPurchaseHighlight = (bool) ($item['is_highlighted'] ?? false);
+                            $newItemClass = ($isNewItem || $isPurchaseHighlight) ? 'new-item-highlight' : '';
+                            $purchaseHighlightClass = $isPurchaseHighlight ? 'purchase-order-highlight' : '';
                             
                             // Determine status badge
                             if ($stock <= 5) {
@@ -1756,7 +2064,7 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                                 $statusClass = 'stock-good';
                             }
                         ?>
-                        <tr class="inventory-row <?php echo $newItemClass; ?>" data-row-index="<?php echo $index; ?>" data-added-time="<?php echo $lastUpdated; ?>" style="<?php echo $isHidden; ?>">
+                        <tr class="inventory-row <?php echo trim($newItemClass . ' ' . $purchaseHighlightClass); ?>" data-row-index="<?php echo $index; ?>" data-added-time="<?php echo htmlspecialchars((string) ($item['last_updated'] ?? '')); ?>" style="<?php echo $isHidden; ?>">
                             <td style="text-align: center; font-weight: bold; color: #f4d03f;"><?php echo $rowNum; ?></td>
                             <td><span class="item-code" style="background: rgba(244, 208, 63, 0.1); color: #f4d03f;"><?php echo htmlspecialchars($boxDisplay); ?></span></td>
                             <td <?php echo $fileTooltip; ?> style="<?php echo $item['source_file'] ? 'cursor: help; text-decoration: underline dotted; text-decoration-color: #888;' : ''; ?>"><?php echo htmlspecialchars($itemsDisplay); ?></td>
@@ -1823,46 +2131,103 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
             <!-- Orders Tab Content -->
             <div id="orders-tab" class="tab-content">
                 <div style="margin-bottom: 20px;">
-                    <button class="add-stock-btn" style="background: linear-gradient(135deg, #f4d03f 0%, #f9d76a 100%);" onclick="openAddOrderModal()">
-                        <i class="fas fa-plus"></i> Add Order Info
+                    <button class="add-stock-btn" style="background: linear-gradient(135deg, #f4d03f 0%, #f9d76a 100%);" onclick="document.getElementById('toggleCreateBtn').click()">
+                        <i class="fas fa-plus"></i> Create Purchase Order
                     </button>
+                </div>
+
+                <!-- Order Filters -->
+                <div class="filters">
+                    <a class="filter-chip <?php echo (!isset($_GET['filter']) || $_GET['filter'] === 'all') ? 'active' : ''; ?>" href="#" onclick="applyOrderFilter(event, 'all'); return false;" data-filter="all">All</a>
+                    <a class="filter-chip <?php echo (isset($_GET['filter']) && $_GET['filter'] === 'with_po') ? 'active' : ''; ?>" href="#" onclick="applyOrderFilter(event, 'with_po'); return false;" data-filter="with_po">With PO</a>
+                    <a class="filter-chip <?php echo (isset($_GET['filter']) && $_GET['filter'] === 'no_po') ? 'active' : ''; ?>" href="#" onclick="applyOrderFilter(event, 'no_po'); return false;" data-filter="no_po">No PO</a>
+                    <a class="filter-chip <?php echo (isset($_GET['filter']) && $_GET['filter'] === 'delivered') ? 'active' : ''; ?>" href="#" onclick="applyOrderFilter(event, 'delivered'); return false;" data-filter="delivered">Delivered</a>
                 </div>
 
                 <!-- Orders Table -->
                 <div class="inventory-table-container">
-                    <table class="inventory-table">
+                    <table class="inventory-table" style="min-width: 980px;">
                         <thead>
                             <tr>
-                                <th style="width: 50px; text-align: center;">#</th>
-                                <th>Item Code</th>
-                                <th>Item Name</th>
+                                <th>Order ID</th>
+                                <th>Product Code</th>
+                                <th>Product Name</th>
                                 <th>Quantity</th>
-                                <th>Status</th>
-                                <th>Order Date</th>
-                                <th>Expected Delivery</th>
+                                <th>Total</th>
+                                <th>Reference No.</th>
+                                <th>PO Status</th>
                                 <th style="text-align: center;">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php 
-                            // Get all orders
-                            $ordersQuery = $conn->query("
-                                SELECT id, item_code, item_name, quantity, status, 
-                                       delivery_month || ' ' || delivery_day || ', ' || delivery_year as order_date,
-                                       notes, created_at
-                                FROM delivery_records
-                                WHERE company_name = 'Orders'
-                                ORDER BY created_at DESC
-                            ");
+                            // Get orders for the Orders tab
+                            $orderFilter = isset($_GET['filter']) && in_array($_GET['filter'], ['all', 'with_po', 'no_po', 'delivered']) ? $_GET['filter'] : 'all';
+                            $orderWhere = "company_name = 'Orders'";
                             
-                            $orders = [];
-                            if ($ordersQuery) {
-                                while ($orderRow = $ordersQuery->fetch_assoc()) {
-                                    $orders[] = $orderRow;
+                            if ($orderFilter === 'with_po') {
+                                $orderWhere .= " AND ((po_number IS NOT NULL AND po_number != '') OR po_status IN ('Pending', 'Received'))";
+                            } elseif ($orderFilter === 'no_po') {
+                                $orderWhere .= " AND ((po_number IS NULL OR po_number = '') AND (po_status IS NULL OR po_status = '' OR po_status = 'No PO'))";
+                            } elseif ($orderFilter === 'delivered') {
+                                $orderWhere .= " AND status = 'Delivered'";
+                            }
+                            
+                            $linkedInvoices = [];
+                            $linkedOrderRefs = [];
+                            $linkedItemCodes = [];
+                            $linkedPoNumbers = [];
+                            $linkedResult = $conn->query("SELECT invoice_no, notes, item_code, po_number FROM delivery_records WHERE company_name != 'Orders'");
+                            if ($linkedResult) {
+                                while ($linkedRow = $linkedResult->fetch_assoc()) {
+                                    $linkedInvoice = trim((string) ($linkedRow['invoice_no'] ?? ''));
+                                    if ($linkedInvoice !== '') {
+                                        $linkedInvoices[$linkedInvoice] = true;
+                                    }
+                                    $linkedNotes = (string) ($linkedRow['notes'] ?? '');
+                                    if ($linkedNotes !== '' && preg_match_all('/SO-\d+/i', $linkedNotes, $matches)) {
+                                        foreach ($matches[0] as $ref) {
+                                            $linkedOrderRefs[strtoupper($ref)] = true;
+                                        }
+                                    }
+                                    // Also track item_code and po_number combinations
+                                    $itemCode = trim((string) ($linkedRow['item_code'] ?? ''));
+                                    $poNumber = trim((string) ($linkedRow['po_number'] ?? ''));
+                                    if ($itemCode !== '') {
+                                        $linkedItemCodes[$itemCode] = true;
+                                    }
+                                    if ($poNumber !== '') {
+                                        $linkedPoNumbers[$poNumber] = true;
+                                    }
                                 }
                             }
                             
-                            if (empty($orders)):
+                            $ordersListSql = "SELECT id, order_customer, order_date, item_code, item_name, quantity, unit_price, total_amount, invoice_no, po_number, po_status, status, created_at
+                                            FROM delivery_records
+                                            WHERE $orderWhere
+                                            ORDER BY id DESC";
+                            $ordersListResult = $conn->query($ordersListSql);
+                            $tabOrders = [];
+                            if ($ordersListResult) {
+                                while ($orderRow = $ordersListResult->fetch_assoc()) {
+                                    $orderInvoice = trim((string) ($orderRow['invoice_no'] ?? ''));
+                                    $orderRef = 'SO-' . str_pad((string) $orderRow['id'], 3, '0', STR_PAD_LEFT);
+                                    $orderItemCode = trim((string) ($orderRow['item_code'] ?? ''));
+                                    $orderPoNumber = trim((string) ($orderRow['po_number'] ?? ''));
+                                    
+                                    // Skip if: invoice matched, OR order ref matched, OR item_code in inventory, OR po_number in inventory
+                                    if (($orderInvoice !== '' && isset($linkedInvoices[$orderInvoice])) 
+                                        || isset($linkedOrderRefs[$orderRef])
+                                        || (isset($linkedItemCodes[$orderItemCode]) && $orderItemCode !== '')
+                                        || (isset($linkedPoNumbers[$orderPoNumber]) && $orderPoNumber !== '')) {
+                                        continue;
+                                    }
+                                    
+                                    $tabOrders[] = $orderRow;
+                                }
+                            }
+                            
+                            if (empty($tabOrders)):
                             ?>
                             <tr>
                                 <td colspan="8" style="text-align: center; padding: 40px; color: #a0a0a0;">
@@ -1871,49 +2236,47 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                                 </td>
                             </tr>
                             <?php else: ?>
-                                <?php foreach ($orders as $index => $order): 
-                                    $rowNum = $index + 1;
-                                    
-                                    // Extract expected delivery date from notes
-                                    $expectedDelivery = 'N/A';
-                                    if (preg_match('/\[Expected Delivery: (\d{4}-\d{2}-\d{2})\]/', $order['notes'], $matches)) {
-                                        $expectedDelivery = $matches[1];
+                                <?php foreach ($tabOrders as $order): 
+                                    $poClass = 'no-po';
+                                    if (($order['po_status'] ?? '') === 'Pending') {
+                                        $poClass = 'pending';
+                                    } elseif (($order['po_status'] ?? '') === 'Received') {
+                                        $poClass = 'received';
                                     }
-                                    
-                                    // Determine status badge color
-                                    $statusColor = '#4a90e2';
-                                    $statusBg = 'rgba(74, 144, 226, 0.2)';
-                                    
-                                    if ($order['status'] === 'Delivered') {
-                                        $statusColor = '#2ecc71';
-                                        $statusBg = 'rgba(46, 204, 113, 0.2)';
-                                    } elseif ($order['status'] === 'Pending') {
-                                        $statusColor = '#ffa500';
-                                        $statusBg = 'rgba(255, 165, 0, 0.2)';
-                                    } elseif ($order['status'] === 'Cancelled') {
-                                        $statusColor = '#ff6b6b';
-                                        $statusBg = 'rgba(255, 107, 107, 0.2)';
-                                    }
+                                    $soId = 'SO-' . str_pad((string) $order['id'], 3, '0', STR_PAD_LEFT);
                                 ?>
                                 <tr>
-                                    <td style="text-align: center; font-weight: bold; color: #f4d03f;"><?php echo $rowNum; ?></td>
-                                    <td><span class="item-code" style="background: rgba(244, 208, 63, 0.1); color: #f4d03f;"><?php echo htmlspecialchars($order['item_code']); ?></span></td>
+                                    <td><?php echo htmlspecialchars($soId); ?></td>
+                                    <td><?php echo htmlspecialchars($order['item_code']); ?></td>
                                     <td><?php echo htmlspecialchars($order['item_name']); ?></td>
-                                    <td style="text-align: center; font-weight: 600;"><?php echo number_format($order['quantity']); ?></td>
+                                    <td style="text-align: center;"><?php echo htmlspecialchars($order['quantity']); ?></td>
+                                    <td>PHP <?php echo number_format(floatval($order['total_amount'] ?? 0), 2); ?></td>
+                                    <td>
+                                        <?php $referenceNo = trim((string) ($order['invoice_no'] ?? '')); ?>
+                                        <?php if ($referenceNo !== ''): ?>
+                                            <?php echo htmlspecialchars($referenceNo); ?>
+                                        <?php else: ?>
+                                            <span style="color: #ffcc80; font-weight: 600;">Pending</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td style="text-align: center;">
-                                        <span style="background: <?php echo $statusBg; ?>; color: <?php echo $statusColor; ?>; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;">
-                                            <?php echo htmlspecialchars($order['status']); ?>
+                                        <span style="display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; font-size: 12px; padding: 6px 12px; font-weight: 600; <?php 
+                                            if ($poClass === 'pending') {
+                                                echo 'background: #f39c12; color: #fff;';
+                                            } elseif ($poClass === 'received') {
+                                                echo 'background: #27ae60; color: #fff;';
+                                            } else {
+                                                echo 'background: #e74c3c; color: #fff;';
+                                            }
+                                        ?>">
+                                            <?php echo htmlspecialchars($order['po_status'] ?: 'No PO'); ?>
                                         </span>
                                     </td>
-                                    <td style="text-align: center; font-size: 12px;"><?php echo htmlspecialchars($order['order_date']); ?></td>
-                                    <td style="text-align: center; font-size: 12px;"><?php echo htmlspecialchars($expectedDelivery); ?></td>
-                                    <td style="text-align: center; white-space: nowrap; display: flex; gap: 6px; justify-content: center;">
-                                        <button class="action-btn action-view action-btn-horizontal" title="Edit" onclick="openEditOrderModal(<?php echo $order['id']; ?>, '<?php echo htmlspecialchars($order['item_code']); ?>', '<?php echo htmlspecialchars($order['item_name']); ?>', <?php echo $order['quantity']; ?>, '<?php echo htmlspecialchars($order['status']); ?>')">
-                                            <i class="fas fa-edit"></i>
-                                        </button>
-                                        <button class="action-btn action-delete action-btn-horizontal" title="Delete" onclick="confirmDeleteOrder(<?php echo $order['id']; ?>, '<?php echo htmlspecialchars($order['item_code']); ?>')">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
+                                    <td style="text-align: center; white-space: nowrap;">
+                                        <div style="display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                                            <a style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; text-decoration: none; color: #60a8ff; background: rgba(96, 168, 255, 0.14); transition: all 0.2s ease; cursor: pointer;" href="order-details.php?id=<?php echo intval($order['id']); ?>" onclick="event.stopPropagation();"><i class="fas fa-eye"></i> View</a>
+                                            <a style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; text-decoration: none; color: #f3be4d; background: rgba(243, 190, 77, 0.14); transition: all 0.2s ease; cursor: pointer;" href="order-details.php?id=<?php echo intval($order['id']); ?>" onclick="event.stopPropagation();"><i class="fas fa-pen"></i> Edit</a>
+                                        </div>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -1924,6 +2287,67 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
             </div>
 
         </main>
+    </div>
+
+    <!-- Create Order Modal (from orders.php) -->
+    <div class="create-order-modal" id="createOrderModal" aria-hidden="true">
+        <div class="form-card create-order-dialog" role="dialog" aria-modal="true" aria-labelledby="createOrderTitle">
+            <div class="modal-header">
+                <h2 class="modal-title" id="createOrderTitle"><i class="fas fa-plus-circle"></i> Create New Purchase Order</h2>
+                <button type="button" class="close-btn" id="closeCreateBtn" aria-label="Close create order">&times;</button>
+            </div>
+
+            <form method="post" action="orders.php" id="createOrderForm">
+                <input type="hidden" name="action" value="create_order">
+                <input type="hidden" name="customer" value="Andison Internal Order">
+                
+                <!-- Order Level Fields -->
+                <div class="form-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label for="order_date">Order Date</label>
+                        <input id="order_date" name="order_date" type="date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="po_status">PO Status</label>
+                        <select id="po_status" name="po_status">
+                            <option>No PO</option>
+                            <option>Pending</option>
+                            <option>Received</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="po_number">PO Number</label>
+                        <input id="po_number" name="po_number" type="text" placeholder="Optional">
+                    </div>
+                    <div class="form-group">
+                        <label for="notes">Notes</label>
+                        <textarea id="notes" name="notes" placeholder="Optional notes" style="resize: vertical; min-height: 60px;"></textarea>
+                    </div>
+                </div>
+
+                <!-- Products Section -->
+                <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px; margin-top: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <label style="font-weight: 700; color: #f4d03f; font-size: 14px;">Products</label>
+                        <button type="button" class="add-product-btn" onclick="addProductRow()" style="background: rgba(244,208,63,0.2); border: 1px solid rgba(244,208,63,0.4); color: #f4d03f; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-plus"></i> Add Product
+                        </button>
+                    </div>
+                    
+                    <div id="products-container" style="display: flex; flex-direction: column; gap: 15px;">
+                        <!-- Product rows will be added here -->
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="action-btn save-order-btn" type="submit" id="saveOrderBtn">
+                        <span class="btn-loader" aria-hidden="true"></span>
+                        <i class="fas fa-save btn-icon" aria-hidden="true"></i>
+                        <span class="btn-text">Save Order</span>
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <!-- Add New Item Modal -->
@@ -2058,6 +2482,7 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                         <option value="Pending">Pending</option>
                         <option value="Processing">Processing</option>
                         <option value="Shipped">Shipped</option>
+                        <option value="Received">Received</option>
                         <option value="Delivered">Delivered</option>
                         <option value="Cancelled">Cancelled</option>
                     </select>
@@ -2141,6 +2566,7 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                         <option value="Pending">Pending</option>
                         <option value="Processing">Processing</option>
                         <option value="Shipped">Shipped</option>
+                        <option value="Received">Received</option>
                         <option value="Delivered">Delivered</option>
                         <option value="Cancelled">Cancelled</option>
                     </select>
@@ -2148,7 +2574,7 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
 
                 <div style="background: linear-gradient(135deg, rgba(100, 150, 255, 0.15) 0%, rgba(100, 150, 255, 0.08) 100%); border: 1px solid rgba(100, 150, 255, 0.2); border-radius: 8px; padding: 12px; margin-bottom: 20px; font-size: 12px; color: #a0a0a0;">
                     <i class="fas fa-info-circle" style="color: #4a90e2; margin-right: 8px;"></i>
-                    <strong style="color: #4a90e2;">Tip:</strong> When you mark an order as <strong>Delivered</strong>, it will automatically be added to your Inventory!
+                    <strong style="color: #4a90e2;">Tip:</strong> When you mark an order as <strong>Received</strong>, it will automatically be added to your Inventory!
                 </div>
 
                 <div class="form-actions">
@@ -2175,6 +2601,16 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                     sidebar.classList.toggle('active');
                 });
             }
+
+            // Check if we need to open Orders tab from URL query parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const tabParam = urlParams.get('tab');
+            if (tabParam === 'orders') {
+                const ordersTabBtn = document.querySelector('button[onclick="openTab(event, \'orders-tab\')"]');
+                if (ordersTabBtn) {
+                    ordersTabBtn.click();
+                }
+            }
         });
 
         // Tab Navigation Functions
@@ -2194,6 +2630,16 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
             // Show the selected tab and mark button as active
             document.getElementById(tabName).classList.add('active');
             evt.currentTarget.classList.add('active');
+            
+            // Show/hide toggleCreateBtn based on active tab
+            const toggleCreateBtn = document.getElementById('toggleCreateBtn');
+            if (toggleCreateBtn) {
+                if (tabName === 'orders-tab') {
+                    toggleCreateBtn.style.display = 'inline-flex';
+                } else {
+                    toggleCreateBtn.style.display = 'none';
+                }
+            }
         }
 
         // Add New Item Modal Functions
@@ -3682,7 +4128,7 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
             .then(data => {
                 if (data.success) {
                     alertDiv.className = 'alert alert-success';
-                    const message = data.moved_to_inventory ? 'Order marked as delivered and moved to inventory!' : 'Order updated successfully!';
+                    const message = data.moved_to_inventory ? 'Order marked as received and moved to inventory!' : 'Order updated successfully!';
                     alertDiv.innerHTML = `<i class="fas fa-check-circle"></i> ${message} Refreshing...`;
                     alertDiv.style.display = 'block';
                     
@@ -3806,6 +4252,163 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                 }, 400);
             }, duration);
         }
+
+        // Create Order Modal Functions (from orders.php)
+        const toggleCreateBtn = document.getElementById('toggleCreateBtn');
+        const createOrderModal = document.getElementById('createOrderModal');
+        const closeCreateBtn = document.getElementById('closeCreateBtn');
+        const createOrderForm = document.getElementById('createOrderForm');
+        const saveOrderBtn = document.getElementById('saveOrderBtn');
+
+        function addProductRow() {
+            const container = document.getElementById('products-container');
+            const rowIndex = container.children.length;
+            
+            const productRow = document.createElement('div');
+            productRow.className = 'product-row';
+            productRow.style.cssText = `
+                display: grid;
+                grid-template-columns: repeat(5, 1fr) auto;
+                gap: 10px;
+                padding: 12px;
+                border: 1px solid rgba(255,255,255,0.1);
+                border-radius: 8px;
+                background: rgba(255,255,255,0.02);
+            `;
+            
+            productRow.innerHTML = `
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; color: #aaa; margin-bottom: 4px; display: block;">Product Code</label>
+                    <input type="text" name="products[${rowIndex}][item_code]" placeholder="Code" required style="padding: 10px; border-radius: 6px; border: 1px solid rgba(244,208,63,0.25); background: rgba(30,42,56,0.6); color: #fff; font-size: 13px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; color: #aaa; margin-bottom: 4px; display: block;">Product Name</label>
+                    <input type="text" name="products[${rowIndex}][item_name]" placeholder="Name" required style="padding: 10px; border-radius: 6px; border: 1px solid rgba(244,208,63,0.25); background: rgba(30,42,56,0.6); color: #fff; font-size: 13px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; color: #aaa; margin-bottom: 4px; display: block;">Qty</label>
+                    <input type="number" name="products[${rowIndex}][quantity]" placeholder="1" min="1" value="1" required style="padding: 10px; border-radius: 6px; border: 1px solid rgba(244,208,63,0.25); background: rgba(30,42,56,0.6); color: #fff; font-size: 13px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; color: #aaa; margin-bottom: 4px; display: block;">Peso Cost</label>
+                    <input type="number" name="products[${rowIndex}][unit_price]" placeholder="0.00" min="0" step="0.01" value="0" style="padding: 10px; border-radius: 6px; border: 1px solid rgba(244,208,63,0.25); background: rgba(30,42,56,0.6); color: #fff; font-size: 13px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; color: #aaa; margin-bottom: 4px; display: block;">Foreign Cost</label>
+                    <input type="number" name="products[${rowIndex}][foreign_cost]" placeholder="0.00" min="0" step="0.01" value="0" style="padding: 10px; border-radius: 6px; border: 1px solid rgba(244,208,63,0.25); background: rgba(30,42,56,0.6); color: #fff; font-size: 13px;">
+                </div>
+                <button type="button" class="remove-product-btn" onclick="removeProductRow(this)" style="background: rgba(255,76,76,0.2); border: 1px solid rgba(255,76,76,0.4); color: #ff4c4c; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; align-self: flex-end; margin-bottom: 0; white-space: nowrap;">
+                    <i class="fas fa-trash"></i> Remove
+                </button>
+            `;
+            
+            container.appendChild(productRow);
+        }
+
+        function removeProductRow(btn) {
+            btn.closest('.product-row').remove();
+        }
+
+        function openCreateOrderModal() {
+            if (!createOrderModal) return;
+            
+            // Add one empty product row if none exist
+            const container = document.getElementById('products-container');
+            if (container.children.length === 0) {
+                addProductRow();
+            }
+            
+            // Reset form
+            createOrderForm.reset();
+            
+            createOrderModal.classList.add('show');
+            createOrderModal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeCreateOrderModal() {
+            if (!createOrderModal) return;
+            const container = document.getElementById('products-container');
+            container.innerHTML = ''; // Clear all product rows
+            createOrderForm.reset();
+            createOrderModal.classList.remove('show');
+            createOrderModal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+
+        if (toggleCreateBtn && createOrderModal) {
+            toggleCreateBtn.addEventListener('click', function () {
+                openCreateOrderModal();
+            });
+
+            if (closeCreateBtn) {
+                closeCreateBtn.addEventListener('click', closeCreateOrderModal);
+            }
+
+            createOrderModal.addEventListener('click', function (event) {
+                if (event.target === createOrderModal) {
+                    closeCreateOrderModal();
+                }
+            });
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && createOrderModal.classList.contains('show')) {
+                    closeCreateOrderModal();
+                }
+            });
+
+            if (saveOrderBtn && createOrderForm) {
+                saveOrderBtn.classList.add('action-btn');
+                saveOrderBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (createOrderForm.checkValidity() === false) {
+                        e.stopPropagation();
+                        createOrderForm.classList.add('was-validated');
+                    } else {
+                        createOrderForm.submit();
+                    }
+                });
+            }
+        }
+
+        // Apply order filter for Orders tab
+        function applyOrderFilter(event, filter) {
+            event.preventDefault();
+            const url = new URL(window.location);
+            url.searchParams.set('filter', filter);
+            url.searchParams.set('tab', 'orders');
+            window.location.href = url.toString();
+        }
+        
+        // Remove highlight after 60 seconds for items added from purchase orders
+        (function() {
+            const highlightedRows = document.querySelectorAll('.purchase-order-highlight');
+            if (highlightedRows.length > 0) {
+                const urlParams = new URLSearchParams(window.location.search);
+                const isFromPurchaseOrder = urlParams.has('highlight');
+                
+                if (isFromPurchaseOrder) {
+                    // Bring the newest highlighted item into view immediately.
+                    const highlightedRow = highlightedRows[0];
+                    if (highlightedRow) {
+                        highlightedRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+
+                    // Clean up query parameter so refresh won't retrigger forced highlight behavior.
+                    urlParams.delete('highlight');
+                    const cleanUrl = `${window.location.pathname}?${urlParams.toString()}`.replace(/\?$/, '');
+                    window.history.replaceState({}, document.title, cleanUrl);
+                    
+                    // Remove purchase-order spotlight after 60 seconds.
+                    setTimeout(function() {
+                        highlightedRows.forEach(function(row) {
+                            row.classList.remove('purchase-order-highlight');
+                            row.classList.remove('new-item-highlight');
+                        });
+                    }, 60000);
+                }
+            }
+        })();
     </script>
 
     <!-- Delete Confirmation Modal -->
@@ -4042,7 +4645,6 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
             const filename = document.getElementById('deleteFileName').textContent;
             deleteInventoryDataset(filename);
         };
-    </script>
     </script>
     <style>
         @keyframes slideInRight {

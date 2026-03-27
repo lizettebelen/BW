@@ -86,8 +86,8 @@ try {
     $order_year = intval($order_date_obj->format('Y'));
     $now = date('Y-m-d H:i:s');
 
-    // If status is Delivered, add directly to Inventory instead of Orders
-    if ($status === 'Delivered') {
+    // Only move to inventory when order is explicitly marked as Received
+    if ($status === 'Received') {
         $company_name = 'Stock Addition';
         $grouping = identifyGrouping($item_name);
         $uom = 'UNITS';
@@ -120,9 +120,9 @@ try {
         }
         
         http_response_code(201);
-        echo json_encode(['success' => true, 'message' => 'Order added directly to inventory!', 'placed_in' => 'inventory']);
+        echo json_encode(['success' => true, 'message' => 'Order received and moved to inventory!', 'placed_in' => 'inventory']);
     } else {
-        // Status is not Delivered, so add to Orders table
+        // Keep non-received orders in Orders until they are received
         $company_name = 'Orders';
         $insert_sql = "INSERT INTO delivery_records 
                        (delivery_month, delivery_day, delivery_year, item_code, item_name, quantity, 

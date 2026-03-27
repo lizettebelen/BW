@@ -1134,13 +1134,6 @@ if (empty($allItems)) {
                     </a>
                 </li>
 
-                <li class="menu-item">
-    <a href="orders.php" class="menu-link">
-        <i class="fas fa-file-invoice-dollar"></i>
-        <span class="menu-label">Orders</span>
-    </a>
-</li>
-
                 <!-- Sales Records -->
                 <li class="menu-item">
                     <a href="sales-records.php" class="menu-link">

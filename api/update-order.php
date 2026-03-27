@@ -69,7 +69,7 @@ try {
     $year_int = intval($order['delivery_year']);
     $now = date('Y-m-d H:i:s');
 
-    if ($status === 'Delivered') {
+    if ($status === 'Received') {
         $grouping = identifyGrouping($order['item_name']);
         $uom = 'UNITS';
         
@@ -125,8 +125,8 @@ try {
     http_response_code(200);
     echo json_encode([
         'success' => true, 
-        'message' => ($status === 'Delivered' ? 'Order moved to inventory!' : 'Order updated!'),
-        'moved_to_inventory' => ($status === 'Delivered')
+        'message' => ($status === 'Received' ? 'Order moved to inventory!' : 'Order updated!'),
+        'moved_to_inventory' => ($status === 'Received')
     ]);
     
 } catch (Exception $e) {

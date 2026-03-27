@@ -1204,13 +1204,6 @@ $yearOrders = json_encode(array_column($yearlySales, 'orders'));
                         </a>
                     </li>
 
-                    <li class="menu-item">
-    <a href="orders.php" class="menu-link">
-        <i class="fas fa-file-invoice-dollar"></i>
-        <span class="menu-label">Orders</span>
-    </a>
-</li>
-
                     <!-- Sales Records - Active -->
                     <li class="menu-item active">
                         <a href="sales-records.php" class="menu-link">

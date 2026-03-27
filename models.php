@@ -517,14 +517,6 @@ $groupings = [
                     </a>
                 </li>
 
-                <!-- Orders -->
-                <li class="menu-item">
-                    <a href="orders.php" class="menu-link">
-                        <i class="fas fa-file-invoice-dollar"></i>
-                        <span class="menu-label">Orders</span>
-                    </a>
-                </li>
-
                 <!-- Delivery Records -->
                 <li class="menu-item">
                     <a href="delivery-records.php" class="menu-link">

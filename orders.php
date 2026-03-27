@@ -19,25 +19,23 @@ $flash = $_SESSION['orders_flash'] ?? null;
 unset($_SESSION['orders_flash']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_order') {
-    $customer = trim($_POST['customer'] ?? '');
+    $customer = 'Andison Internal Order';
     $orderDate = trim($_POST['order_date'] ?? '');
-    $itemCode = trim($_POST['item_code'] ?? '');
-    $itemName = trim($_POST['item_name'] ?? '');
-    $quantity = max(1, intval($_POST['quantity'] ?? 1));
-    $unitPrice = floatval($_POST['unit_price'] ?? 0);
     $poStatus = trim($_POST['po_status'] ?? 'No PO');
     $poNumber = trim($_POST['po_number'] ?? '');
-
-    if ($customer === '' || $orderDate === '' || $itemCode === '' || $itemName === '') {
-        $_SESSION['orders_flash'] = ['type' => 'error', 'message' => 'Customer, order date, item code, and item name are required.'];
-        header('Location: orders.php', true, 302);
+    $notes = trim($_POST['notes'] ?? '');
+    
+    // Validate order date
+    if ($orderDate === '') {
+        $_SESSION['orders_flash'] = ['type' => 'error', 'message' => 'Order date is required.'];
+        header('Location: inventory.php?tab=orders', true, 302);
         exit;
     }
-
+    
     $dt = DateTime::createFromFormat('Y-m-d', $orderDate);
     if (!$dt) {
         $_SESSION['orders_flash'] = ['type' => 'error', 'message' => 'Invalid order date format.'];
-        header('Location: orders.php', true, 302);
+        header('Location: inventory.php?tab=orders', true, 302);
         exit;
     }
 
@@ -46,58 +44,103 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         $poStatus = 'No PO';
     }
 
-    $deliveryMonth = $dt->format('F');
-    $deliveryDay = intval($dt->format('j'));
-    $deliveryYear = intval($dt->format('Y'));
-    $status = 'Pending';
-    $companyName = 'Orders';
-    $totalAmount = $quantity * $unitPrice;
-    $notes = trim($_POST['notes'] ?? '');
-
-    $sql = "INSERT INTO delivery_records (
-                invoice_no, serial_no, delivery_month, delivery_day, delivery_year, delivery_date,
-                item_code, item_name, company_name, quantity, status, notes,
-                order_customer, order_date, unit_price, total_amount, po_number, po_status,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
-
-    $stmt = $conn->prepare($sql);
-    if ($stmt) {
-        $invoiceNo = '';
-        $serialNo = '';
-        $stmt->bind_param(
-            'sssiissssissssddss',
-            $invoiceNo,
-            $serialNo,
-            $deliveryMonth,
-            $deliveryDay,
-            $deliveryYear,
-            $orderDate,
-            $itemCode,
-            $itemName,
-            $companyName,
-            $quantity,
-            $status,
-            $notes,
-            $customer,
-            $orderDate,
-            $unitPrice,
-            $totalAmount,
-            $poNumber,
-            $poStatus
-        );
-
-        if ($stmt->execute()) {
-            $_SESSION['orders_flash'] = ['type' => 'success', 'message' => 'Order created successfully.'];
-        } else {
-            $_SESSION['orders_flash'] = ['type' => 'error', 'message' => 'Failed to create order: ' . $stmt->error];
+    // Process multiple products
+    $products = isset($_POST['products']) && is_array($_POST['products']) ? $_POST['products'] : [];
+    
+    if (empty($products)) {
+        $_SESSION['orders_flash'] = ['type' => 'error', 'message' => 'Please add at least one product.'];
+        header('Location: inventory.php?tab=orders', true, 302);
+        exit;
+    }
+    
+    $successCount = 0;
+    $failureCount = 0;
+    $failureMessages = [];
+    
+    foreach ($products as $product) {
+        $itemCode = trim($product['item_code'] ?? '');
+        $itemName = trim($product['item_name'] ?? '');
+        $quantity = max(1, intval($product['quantity'] ?? 1));
+        $unitPrice = floatval($product['unit_price'] ?? 0);
+        $foreignCost = floatval($product['foreign_cost'] ?? 0);
+        
+        // Validate required fields for this product
+        if ($itemCode === '' || $itemName === '') {
+            $failureCount++;
+            $failureMessages[] = 'Product code and name are required for each product.';
+            continue;
         }
-        $stmt->close();
+
+        $deliveryMonth = $dt->format('F');
+        $deliveryDay = intval($dt->format('j'));
+        $deliveryYear = intval($dt->format('Y'));
+        $status = 'Pending';
+        $companyName = 'Orders';
+        $totalAmount = $quantity * $unitPrice;
+        $productNotes = $notes;
+        
+        // Add foreign cost to notes if provided
+        if ($foreignCost > 0) {
+            $costInfo = "[Peso Cost: " . number_format($unitPrice, 2) . " | Foreign Cost: " . number_format($foreignCost, 2) . "]";
+            $productNotes = !empty($notes) ? $costInfo . " " . $notes : $costInfo;
+        }
+
+        $sql = "INSERT INTO delivery_records (
+                    invoice_no, serial_no, delivery_month, delivery_day, delivery_year, delivery_date,
+                    item_code, item_name, company_name, quantity, status, notes,
+                    order_customer, order_date, unit_price, total_amount, po_number, po_status,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
+
+        $stmt = $conn->prepare($sql);
+        if ($stmt) {
+            $invoiceNo = '';
+            $serialNo = '';
+            $stmt->bind_param(
+                'sssiissssissssddss',
+                $invoiceNo,
+                $serialNo,
+                $deliveryMonth,
+                $deliveryDay,
+                $deliveryYear,
+                $orderDate,
+                $itemCode,
+                $itemName,
+                $companyName,
+                $quantity,
+                $status,
+                $productNotes,
+                $customer,
+                $orderDate,
+                $unitPrice,
+                $totalAmount,
+                $poNumber,
+                $poStatus
+            );
+
+            if ($stmt->execute()) {
+                $successCount++;
+            } else {
+                $failureCount++;
+                $failureMessages[] = 'Failed to create order for ' . $itemName . ': ' . $stmt->error;
+            }
+            $stmt->close();
+        } else {
+            $failureCount++;
+            $failureMessages[] = 'Failed to prepare order creation query.';
+        }
+    }
+    
+    // Set result message
+    if ($successCount > 0 && $failureCount === 0) {
+        $_SESSION['orders_flash'] = ['type' => 'success', 'message' => 'Order created successfully with ' . $successCount . ' product(s).'];
+    } elseif ($successCount > 0 && $failureCount > 0) {
+        $_SESSION['orders_flash'] = ['type' => 'warning', 'message' => 'Created ' . $successCount . ' product(s) but ' . $failureCount . ' failed. ' . implode(' ', $failureMessages)];
     } else {
-        $_SESSION['orders_flash'] = ['type' => 'error', 'message' => 'Failed to prepare order creation query.'];
+        $_SESSION['orders_flash'] = ['type' => 'error', 'message' => 'Failed to create order. ' . implode(' ', $failureMessages)];
     }
 
-    header('Location: orders.php', true, 302);
+    header('Location: inventory.php?tab=orders', true, 302);
     exit;
 }
 
@@ -449,7 +492,6 @@ if ($listResult) {
         .badge.pending { background: rgba(241,196,15,.18); color: #ffeeb0; }
         .badge.received { background: rgba(46,204,113,.18); color: #c6f7d8; }
         .badge.delivered { background: rgba(39,174,96,.22); color: #c9f3d9; }
-        .invoice-empty { color: #ffcc80; font-weight: 600; }
         .order-action-cell {
             text-align: center;
             white-space: nowrap;
@@ -649,7 +691,6 @@ if ($listResult) {
                 <ul class="sidebar-menu">
                     <li class="menu-item"><a href="index.php" class="menu-link"><i class="fas fa-chart-line"></i><span class="menu-label">Dashboard</span></a></li>
                     <li class="menu-item"><a href="sales-overview.php" class="menu-link"><i class="fas fa-chart-pie"></i><span class="menu-label">Sales Overview</span></a></li>
-                    <li class="menu-item active"><a href="orders.php" class="menu-link"><i class="fas fa-file-invoice-dollar"></i><span class="menu-label">Orders</span></a></li>
                     <li class="menu-item"><a href="sales-records.php" class="menu-link"><i class="fas fa-calendar-alt"></i><span class="menu-label">Sales Records</span></a></li>
                     <li class="menu-item"><a href="delivery-records.php" class="menu-link"><i class="fas fa-truck"></i><span class="menu-label">Delivery Records</span></a></li>
                     <li class="menu-item"><a href="inventory.php" class="menu-link"><i class="fas fa-boxes"></i><span class="menu-label">Inventory</span></a></li>
@@ -687,15 +728,14 @@ if ($listResult) {
                             <th>Order ID</th>
                             <th>Customer</th>
                             <th>Total</th>
-                            <th>Invoice</th>
+                            <th>Reference No.</th>
                             <th>PO Status</th>
-                            <th>Status</th>
                             <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($orders)): ?>
-                            <tr><td colspan="7" style="color:#9fb1c5;">No orders found for this filter.</td></tr>
+                            <tr><td colspan="6" style="color:#9fb1c5;">No orders found for this filter.</td></tr>
                         <?php else: ?>
                             <?php foreach ($orders as $order): ?>
                                 <?php
@@ -711,20 +751,14 @@ if ($listResult) {
                                     <td><?php echo h($order['order_customer'] ?: 'N/A'); ?></td>
                                     <td>PHP <?php echo number_format(floatval($order['total_amount'] ?? 0), 2); ?></td>
                                     <td>
-                                        <?php if (!empty($order['invoice_no'])): ?>
-                                            <?php echo h($order['invoice_no']); ?>
+                                        <?php $referenceNo = trim((string) ($order['invoice_no'] ?? '')); ?>
+                                        <?php if ($referenceNo !== ''): ?>
+                                            <?php echo h($referenceNo); ?>
                                         <?php else: ?>
-                                            <span class="invoice-empty">Pending</span>
+                                            <span style="color: #ffcc80; font-weight: 600;">Pending</span>
                                         <?php endif; ?>
                                     </td>
                                     <td><span class="badge <?php echo h($poClass); ?>"><?php echo h($order['po_status'] ?: 'No PO'); ?></span></td>
-                                    <td>
-                                        <?php if (($order['status'] ?? '') === 'Delivered'): ?>
-                                            <span class="badge delivered">Delivered</span>
-                                        <?php else: ?>
-                                            <?php echo h($order['status'] ?: 'Pending'); ?>
-                                        <?php endif; ?>
-                                    </td>
                                     <td class="order-action-cell">
                                         <div class="order-actions">
                                             <a class="order-action-btn view" href="order-details.php?id=<?php echo intval($order['id']); ?>" onclick="event.stopPropagation();"><i class="fas fa-eye"></i> View</a>
