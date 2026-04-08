@@ -692,6 +692,13 @@ $totalSold = count(array_filter($delivery_records, function($r) {
                     </li>
 
                     <li class="menu-item">
+                        <a href="inquiry.php" class="menu-link">
+                            <i class="fas fa-file-invoice"></i>
+                            <span class="menu-label">Inquiry</span>
+                        </a>
+                    </li>
+
+                    <li class="menu-item">
                         <a href="delivery-records.php" class="menu-link">
                             <i class="fas fa-truck"></i>
                             <span class="menu-label">Delivery Records</span>
@@ -800,9 +807,16 @@ $totalSold = count(array_filter($delivery_records, function($r) {
                 <?php if ($totalDeliveries > 0): ?>
 
                 <!-- Filter Tabs -->
-                <div class="filter-tabs" style="display:flex;gap:8px;margin-bottom:14px;">
-                    <button class="filter-tab active" id="tabAll" onclick="setFilter('all')">All Records</button>
-                    <button class="filter-tab" id="tabSales" onclick="setFilter('sales')"><i class="fas fa-tag" style="margin-right:5px;"></i>Sales</button>
+                <div class="filter-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+                    <button class="filter-tab active" id="tabAll" data-filter="all" onclick="setFilter('all')">All Records</button>
+                    <button class="filter-tab" id="tabSales" data-filter="sales" onclick="setFilter('sales')"><i class="fas fa-tag" style="margin-right:5px;"></i>Sales</button>
+                </div>
+                <div class="filter-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+                    <button class="filter-tab" id="tab1A" data-filter="1a" onclick="setFilter('1a')">1A</button>
+                    <button class="filter-tab" id="tab1B" data-filter="1b" onclick="setFilter('1b')">1B</button>
+                    <button class="filter-tab" id="tab2A" data-filter="2a" onclick="setFilter('2a')">2A</button>
+                    <button class="filter-tab" id="tab3A" data-filter="3a" onclick="setFilter('3a')">3A</button>
+                    <button class="filter-tab" id="tab4A" data-filter="4a" onclick="setFilter('4a')">4A</button>
                 </div>
 
                 <!-- Search Bar -->
@@ -860,7 +874,7 @@ $totalSold = count(array_filter($delivery_records, function($r) {
                                     $row_sold_to = $record['sold_to'] ?? '';
                                 }
                             ?>
-                            <tr data-soldto="<?php echo !empty($row_sold_to) ? '1' : '0'; ?>">
+                            <tr data-soldto="<?php echo !empty($row_sold_to) ? '1' : '0'; ?>" data-grouping="<?php echo strtolower(trim((string) ($record['groupings'] ?? ''))); ?>">
                                 <td><?php echo htmlspecialchars($record['invoice_no'] ?? ''); ?></td>
                                 <td><?php echo htmlspecialchars($date_col); ?></td>
                                 <td><?php echo htmlspecialchars($record['delivery_month'] ?? ''); ?></td>
@@ -1002,7 +1016,27 @@ $totalSold = count(array_filter($delivery_records, function($r) {
                     </div>
                     <div class="form-group">
                         <label for="add_groupings">Groupings</label>
-                        <input type="text" id="add_groupings" name="groupings" placeholder="e.g., A, B, C">
+                        <select id="add_groupings" name="groupings" required>
+                            <option value="">Select Grouping</option>
+                            <option value="1A" selected>1A</option>
+                            <option value="1B">1B</option>
+                            <option value="2A">2A</option>
+                            <option value="3A">3A</option>
+                            <option value="4A">4A</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="add_highlight_preset">Color Marker</label>
+                        <select id="add_highlight_preset" name="highlight_preset" onchange="toggleAddCustomColor()">
+                            <option value="">No Color Marker</option>
+                            <option value="#D8B4FE">Katay (Purple)</option>
+                            <option value="#FDE68A">Send to Andison (Yellow)</option>
+                            <option value="#FCA5A5">Warranty Replacement (Red)</option>
+                            <option value="#93C5FD">Warranty to Purchase (Blue)</option>
+                            <option value="#F9A8D4">Purchase to Warranty (Pink)</option>
+                            <option value="custom">Custom Color...</option>
+                        </select>
+                        <input type="color" id="add_highlight_color" value="#FDE68A" style="display:none; margin-top: 8px;">
                     </div>
                     <div class="form-group">
                         <label for="add_status">Status</label>
@@ -1214,7 +1248,27 @@ $totalSold = count(array_filter($delivery_records, function($r) {
                     </div>
                     <div class="form-group">
                         <label for="edit_groupings">Groupings</label>
-                        <input type="text" id="edit_groupings" name="groupings" placeholder="e.g., A, B, C">
+                        <select id="edit_groupings" name="groupings" required>
+                            <option value="">Select Grouping</option>
+                            <option value="1A">1A</option>
+                            <option value="1B">1B</option>
+                            <option value="2A">2A</option>
+                            <option value="3A">3A</option>
+                            <option value="4A">4A</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_highlight_preset">Color Marker</label>
+                        <select id="edit_highlight_preset" name="highlight_preset" onchange="toggleEditCustomColor()">
+                            <option value="">No Color Marker</option>
+                            <option value="#D8B4FE">Katay (Purple)</option>
+                            <option value="#FDE68A">Send to Andison (Yellow)</option>
+                            <option value="#FCA5A5">Warranty Replacement (Red)</option>
+                            <option value="#93C5FD">Warranty to Purchase (Blue)</option>
+                            <option value="#F9A8D4">Purchase to Warranty (Pink)</option>
+                            <option value="custom">Custom Color...</option>
+                        </select>
+                        <input type="color" id="edit_highlight_color" value="#FDE68A" style="display:none; margin-top: 8px;">
                     </div>
                     <div class="form-group">
                         <label for="edit_status">Status</label>
@@ -1335,12 +1389,25 @@ $totalSold = count(array_filter($delivery_records, function($r) {
             document.getElementById('addRecordModal').classList.add('show');
             document.body.classList.add('modal-open');
             document.getElementById('add_delivery_date').value = new Date().toISOString().split('T')[0];
+            document.getElementById('add_highlight_preset').value = '';
+            document.getElementById('add_highlight_color').style.display = 'none';
         }
 
         function closeAddModal() {
             document.getElementById('addRecordModal').classList.remove('show');
             document.body.classList.remove('modal-open');
             document.getElementById('addRecordForm').reset();
+            document.getElementById('add_highlight_color').style.display = 'none';
+        }
+
+        function toggleAddCustomColor() {
+            const preset = document.getElementById('add_highlight_preset').value;
+            document.getElementById('add_highlight_color').style.display = (preset === 'custom') ? 'block' : 'none';
+        }
+
+        function toggleEditCustomColor() {
+            const preset = document.getElementById('edit_highlight_preset').value;
+            document.getElementById('edit_highlight_color').style.display = (preset === 'custom') ? 'block' : 'none';
         }
 
         function submitAddRecord(event) {
@@ -1365,6 +1432,11 @@ $totalSold = count(array_filter($delivery_records, function($r) {
                 sold_to_month:  document.getElementById('add_sold_to_month').value,
                 sold_to_day:    parseInt(document.getElementById('add_sold_to_day').value) || 0,
                 groupings:      document.getElementById('add_groupings').value,
+                highlight_color: (() => {
+                    const preset = document.getElementById('add_highlight_preset').value;
+                    if (preset === 'custom') return document.getElementById('add_highlight_color').value || '';
+                    return preset || '';
+                })(),
                 notes:          document.getElementById('add_notes').value,
                 status:         document.getElementById('add_status').value
             };
@@ -1529,6 +1601,23 @@ $totalSold = count(array_filter($delivery_records, function($r) {
             document.getElementById('edit_notes').value         = record.remarks || '';
             document.getElementById('edit_groupings').value     = record.groupings || '';
             document.getElementById('edit_status').value        = record.status || 'Delivered';
+            {
+                const preset = document.getElementById('edit_highlight_preset');
+                const custom = document.getElementById('edit_highlight_color');
+                const colorValue = String(record.highlight_color || '').trim().toUpperCase();
+                const presetOptions = ['', '#D8B4FE', '#FDE68A', '#FCA5A5', '#93C5FD', '#F9A8D4'];
+                if (presetOptions.includes(colorValue)) {
+                    preset.value = colorValue;
+                    custom.style.display = 'none';
+                } else if (/^#?[0-9A-F]{6}$/.test(colorValue)) {
+                    preset.value = 'custom';
+                    custom.value = colorValue.startsWith('#') ? colorValue : `#${colorValue}`;
+                    custom.style.display = 'block';
+                } else {
+                    preset.value = '';
+                    custom.style.display = 'none';
+                }
+            }
             document.getElementById('edit_date').value          = record.delivery_date || '';
             document.getElementById('edit_delivery_date').value = record.delivery_date || '';
             document.getElementById('edit_delivery_month').value = record.delivery_month || '';
@@ -1570,6 +1659,11 @@ $totalSold = count(array_filter($delivery_records, function($r) {
                 sold_to_month:  document.getElementById('edit_sold_to_month').value,
                 sold_to_day:    document.getElementById('edit_sold_to_day').value,
                 groupings:      document.getElementById('edit_groupings').value,
+                highlight_color: (() => {
+                    const preset = document.getElementById('edit_highlight_preset').value;
+                    if (preset === 'custom') return document.getElementById('edit_highlight_color').value || '';
+                    return preset || '';
+                })(),
                 notes:          document.getElementById('edit_notes').value,
                 status:         document.getElementById('edit_status').value
             };
@@ -1605,8 +1699,9 @@ $totalSold = count(array_filter($delivery_records, function($r) {
 
         function setFilter(filter) {
             activeFilter = filter;
-            document.getElementById('tabAll').classList.toggle('active', filter === 'all');
-            document.getElementById('tabSales').classList.toggle('active', filter === 'sales');
+            document.querySelectorAll('.filter-tab[data-filter]').forEach(button => {
+                button.classList.toggle('active', button.dataset.filter === filter);
+            });
             searchTable();
         }
 
@@ -1615,22 +1710,29 @@ $totalSold = count(array_filter($delivery_records, function($r) {
             const filter = document.getElementById('searchInput').value.toLowerCase().trim();
             const rows = document.querySelectorAll('table tbody tr');
             let count = 0;
+            const categoryFilters = ['1a', '1b', '2a', '3a', '4a'];
+            const hasActiveFilter = activeFilter !== 'all';
             rows.forEach(row => {
                 const text = row.textContent.toLowerCase();
                 const textMatch = filter === '' || text.includes(filter);
                 const salesMatch = activeFilter !== 'sales' || row.dataset.soldto === '1';
-                const match = textMatch && salesMatch;
+                const categoryMatch = categoryFilters.includes(activeFilter)
+                    ? (row.dataset.grouping || '').trim().toLowerCase() === activeFilter
+                    : true;
+                const match = textMatch && salesMatch && categoryMatch;
                 row.style.display = match ? '' : 'none';
                 if (match) count++;
             });
             const total = recordsData.length;
             const countEl = document.getElementById('searchCount');
             if (countEl) {
-                const label = activeFilter === 'sales' ? 'sales records' : 'records';
-                countEl.textContent = (filter || activeFilter === 'sales')
+                const label = activeFilter === 'sales'
+                    ? 'sales records'
+                    : (categoryFilters.includes(activeFilter) ? `${activeFilter.toUpperCase()} records` : 'records');
+                countEl.textContent = (filter || hasActiveFilter)
                     ? `Showing ${count} of ${total} ${label}`
                     : `Showing ${total} records`;
-                countEl.style.color = (filter || activeFilter === 'sales') ? '#0066cc' : '#666';
+                countEl.style.color = (filter || hasActiveFilter) ? '#0066cc' : '#666';
             }
         }
 

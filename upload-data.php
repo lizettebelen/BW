@@ -1102,6 +1102,13 @@ if ($conn) {
                     </a>
                 </li>
 
+                <li class="menu-item">
+                    <a href="inquiry.php" class="menu-link">
+                        <i class="fas fa-file-invoice"></i>
+                        <span class="menu-label">Inquiry</span>
+                    </a>
+                </li>
+
                 <!-- Delivery Records -->
                 <li class="menu-item">
                     <a href="delivery-records.php" class="menu-link">
@@ -1206,7 +1213,7 @@ if ($conn) {
                             </div>
                             <p style="margin-top: 15px; font-style: italic;">
                                 <i class="fas fa-lightbulb" style="color: #f4d03f;"></i>
-                                The system also supports: Item_Code, Item_Name, Quantity, Status, Company_Name, etc.
+                                The system also supports: Item_Code, Item_Name, Quantity, Status, Company_Name, <strong style="color: #f4d03f;">Category/By Color/Color/Type</strong> (for color groupings), etc.
                             </p>
                             <button class="btn-download-template" onclick="downloadTemplate()">
                                 <i class="fas fa-download"></i> Download Template
@@ -1764,14 +1771,14 @@ if ($conn) {
                     reader.onload = function(e) {
                         try {
                             const data = e.target.result;
-                            const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
+                            const workbook = XLSX.read(data, { type: 'binary', cellDates: true, cellStyles: true });
                             
                             // Check for multiple sheets
                             if (workbook.SheetNames.length > 1) {
                                 const sheets = {};
                                 workbook.SheetNames.forEach(sheetName => {
                                     const worksheet = workbook.Sheets[sheetName];
-                                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
                                     const rowCount = jsonData.length > 0 ? jsonData.length - 1 : 0;
                                     sheets[sheetName] = {
                                         worksheet: worksheet,
@@ -1797,11 +1804,154 @@ if ($conn) {
         }
 
         function parseWorksheet(worksheet) {
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
             if (jsonData.length < 2) return [];
             
             const headers = jsonData[0].map(h => String(h || '').trim()).filter(h => h !== '');
             if (headers.length === 0) return [];
+
+            const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:A1');
+
+            function normalizeExcelColor(rawColor) {
+                if (!rawColor) return '';
+
+                const indexedPalette = {
+                    0: '#000000', 1: '#FFFFFF', 2: '#FF0000', 3: '#00FF00', 4: '#0000FF', 5: '#FFFF00', 6: '#FF00FF', 7: '#00FFFF',
+                    8: '#000000', 9: '#FFFFFF', 10: '#FF0000', 11: '#00FF00', 12: '#0000FF', 13: '#FFFF00', 14: '#FF00FF', 15: '#00FFFF',
+                    16: '#800000', 17: '#008000', 18: '#000080', 19: '#808000', 20: '#800080', 21: '#008080', 22: '#C0C0C0', 23: '#808080',
+                    24: '#9999FF', 25: '#993366', 26: '#FFFFCC', 27: '#CCFFFF', 28: '#660066', 29: '#FF8080', 30: '#0066CC', 31: '#CCCCFF',
+                    32: '#000080', 33: '#FF00FF', 34: '#FFFF00', 35: '#00FFFF', 36: '#800080', 37: '#800000', 38: '#008080', 39: '#0000FF',
+                    40: '#00CCFF', 41: '#CCFFFF', 42: '#CCFFCC', 43: '#FFFF99', 44: '#99CCFF', 45: '#FF99CC', 46: '#CC99FF', 47: '#FFCC99',
+                    48: '#3366FF', 49: '#33CCCC', 50: '#99CC00', 51: '#FFCC00', 52: '#FF9900', 53: '#FF6600', 54: '#666699', 55: '#969696',
+                    56: '#003366', 57: '#339966', 58: '#003300', 59: '#333300', 60: '#993300', 61: '#993366', 62: '#333399', 63: '#333333'
+                };
+
+                const themePalette = {
+                    0: '#FFFFFF', 1: '#000000', 2: '#EEECE1', 3: '#1F497D', 4: '#4F81BD',
+                    5: '#C0504D', 6: '#9BBB59', 7: '#8064A2', 8: '#4BACC6', 9: '#F79646'
+                };
+
+                const clampByte = (n) => Math.max(0, Math.min(255, Math.round(n)));
+
+                const applyTint = (hexColor, tint) => {
+                    const hex = String(hexColor || '').replace('#', '');
+                    if (!/^[0-9A-Fa-f]{6}$/.test(hex) || typeof tint !== 'number' || Number.isNaN(tint)) {
+                        return hexColor;
+                    }
+                    const r = parseInt(hex.slice(0, 2), 16);
+                    const g = parseInt(hex.slice(2, 4), 16);
+                    const b = parseInt(hex.slice(4, 6), 16);
+
+                    const shade = (channel) => {
+                        if (tint < 0) return clampByte(channel * (1 + tint));
+                        return clampByte(channel * (1 - tint) + (255 * tint));
+                    };
+
+                    const nr = shade(r).toString(16).padStart(2, '0');
+                    const ng = shade(g).toString(16).padStart(2, '0');
+                    const nb = shade(b).toString(16).padStart(2, '0');
+                    return `#${(nr + ng + nb).toUpperCase()}`;
+                };
+
+                if (typeof rawColor === 'object') {
+                    if (rawColor.rgb || rawColor.argb) {
+                        let color = String(rawColor.rgb || rawColor.argb).trim();
+                        if (color.startsWith('#')) color = color.slice(1);
+                        if (color.length === 8 && color.toUpperCase().startsWith('FF')) color = color.slice(2);
+                        if (/^[0-9A-Fa-f]{6}$/.test(color)) {
+                            const base = `#${color.toUpperCase()}`;
+                            return applyTint(base, Number(rawColor.tint));
+                        }
+                    }
+
+                    if (typeof rawColor.indexed !== 'undefined' && indexedPalette.hasOwnProperty(rawColor.indexed)) {
+                        const base = indexedPalette[rawColor.indexed];
+                        return applyTint(base, Number(rawColor.tint));
+                    }
+
+                    if (typeof rawColor.theme !== 'undefined' && themePalette.hasOwnProperty(rawColor.theme)) {
+                        const base = themePalette[rawColor.theme];
+                        return applyTint(base, Number(rawColor.tint));
+                    }
+                }
+
+                let color = String(rawColor).trim();
+                if (color.startsWith('#')) color = color.slice(1);
+                if (color.length === 8 && color.toUpperCase().startsWith('FF')) {
+                    color = color.slice(2);
+                }
+                if (/^[0-9A-Fa-f]{6}$/.test(color)) {
+                    return `#${color.toUpperCase()}`;
+                }
+
+                return '';
+            }
+
+            function isNeutralColor(color) {
+                const normalized = String(color || '').toUpperCase();
+                return normalized === '#000000' || normalized === '#FFFFFF';
+            }
+
+            function extractCellStyle(cell) {
+                if (!cell || !cell.s) return null;
+
+                const fillColor = normalizeExcelColor(cell.s.fill?.fgColor || cell.s.fill?.bgColor);
+                const fontColor = normalizeExcelColor(cell.s.font?.color);
+
+                const style = {};
+                if (fillColor && !isNeutralColor(fillColor)) {
+                    style.bg = fillColor;
+                }
+                if (fontColor && !isNeutralColor(fontColor)) {
+                    style.text = fontColor;
+                }
+
+                if (Object.keys(style).length > 0) {
+                    return style;
+                }
+
+                // Keep non-empty fill as fallback if sheet intentionally uses neutral fill markers.
+                if (fillColor) {
+                    return { bg: fillColor };
+                }
+
+                return null;
+            }
+
+            function extractCellColor(cell) {
+                const style = extractCellStyle(cell);
+                if (!style) return '';
+                return style.bg || style.text || '';
+            }
+
+            function extractCellFillColor(cell) {
+                if (!cell || !cell.s) return '';
+                return normalizeExcelColor(cell.s.fill?.fgColor || cell.s.fill?.bgColor);
+            }
+
+            function getRowHighlightColor(rowNumber) {
+                const colorCounts = {};
+
+                for (let col = range.s.c; col <= range.e.c; col++) {
+                    const cellRef = XLSX.utils.encode_cell({ r: rowNumber, c: col });
+                    const cell = worksheet[cellRef];
+                    const fillColor = extractCellFillColor(cell);
+                    if (fillColor) {
+                        colorCounts[fillColor] = (colorCounts[fillColor] || 0) + 1;
+                    }
+                }
+
+                let topColor = '';
+                let topCount = 0;
+                Object.entries(colorCounts).forEach(([color, count]) => {
+                    if (count > topCount) {
+                        topColor = color;
+                        topCount = count;
+                    }
+                });
+
+                return topColor;
+            }
             
             const rows = [];
             for (let i = 1; i < jsonData.length; i++) {
@@ -1809,13 +1959,31 @@ if ($conn) {
                 if (!rowData || rowData.length === 0) continue;
                 
                 const row = {};
+                const cellStyles = {};
+                const sheetRowNumber = range.s.r + i;
+
                 headers.forEach((header, index) => {
                     let value = rowData[index];
                     if (value instanceof Date) {
                         value = value.toISOString().split('T')[0];
                     }
                     row[header] = value !== undefined ? value : '';
+
+                    const cellRef = XLSX.utils.encode_cell({ r: sheetRowNumber, c: index });
+                    const cell = worksheet[cellRef];
+                    const cellStyle = extractCellStyle(cell);
+                    if (cellStyle) {
+                        cellStyles[header] = cellStyle;
+                    }
                 });
+
+                const rowHighlightColor = getRowHighlightColor(sheetRowNumber);
+                if (Object.keys(cellStyles).length > 0) {
+                    row.cell_styles = cellStyles;
+                }
+                if (rowHighlightColor) {
+                    row.highlight_color = rowHighlightColor;
+                }
                 
                 if (Object.values(row).some(v => v !== '')) {
                     rows.push(row);
@@ -2344,10 +2512,10 @@ if ($conn) {
                     reader.onload = function(e) {
                         try {
                             const data = e.target.result;
-                            const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
+                            const workbook = XLSX.read(data, { type: 'binary', cellDates: true, cellStyles: true });
                             const firstSheet = workbook.SheetNames[0];
                             const worksheet = workbook.Sheets[firstSheet];
-                            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
                             
                             if (jsonData.length < 2) {
                                 reject(new Error('File is empty or has no data rows'));

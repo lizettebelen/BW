@@ -715,6 +715,13 @@ if ($result) {
                     </a>
                 </li>
 
+                <li class="menu-item">
+                    <a href="inquiry.php" class="menu-link">
+                        <i class="fas fa-file-invoice"></i>
+                        <span class="menu-label">Inquiry</span>
+                    </a>
+                </li>
+
                 <!-- Delivery Records -->
                 <li class="menu-item">
                     <a href="delivery-records.php" class="menu-link">

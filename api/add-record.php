@@ -1,5 +1,6 @@
 <?php
 header('Content-Type: application/json');
+ini_set('display_errors', 0);
 
 // Include database configuration
 require_once __DIR__ . '/../db_config.php';
@@ -32,7 +33,18 @@ try {
     $sold_to_day = !empty($data['sold_to_day']) ? intval($data['sold_to_day']) : null;
     $notes = trim($data['notes'] ?? '');
     $groupings = trim($data['groupings'] ?? '');
+    $allowedGroupings = ['1A', '1B', '2A', '3A', '4A'];
+    if ($groupings !== '' && !in_array($groupings, $allowedGroupings, true)) {
+        $groupings = '';
+    }
     $dataset_name = trim($data['dataset_name'] ?? '');
+    $highlight_color = strtoupper(trim($data['highlight_color'] ?? ''));
+    if ($highlight_color !== '' && !preg_match('/^#?[0-9A-F]{6}$/', $highlight_color)) {
+        $highlight_color = '';
+    }
+    if ($highlight_color !== '' && $highlight_color[0] !== '#') {
+        $highlight_color = '#' . $highlight_color;
+    }
     
     // Main fields from form
     $invoice_no = trim($data['invoice_no'] ?? '');
@@ -68,8 +80,8 @@ try {
     
     // Insert into database
     $sql = "INSERT INTO delivery_records 
-            (invoice_no, serial_no, delivery_month, delivery_day, delivery_year, delivery_date, item_code, item_name, company_name, transferred_to, sold_to, quantity, unit_price, status, notes, uom, sold_to_month, sold_to_day, groupings, dataset_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            (invoice_no, serial_no, delivery_month, delivery_day, delivery_year, delivery_date, item_code, item_name, company_name, transferred_to, sold_to, quantity, unit_price, status, highlight_color, notes, uom, sold_to_month, sold_to_day, groupings, dataset_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     
     $stmt = $conn->prepare($sql);
     if (!$stmt) {
@@ -77,7 +89,7 @@ try {
     }
 
     $stmt->bind_param(
-        'sssiissssssidssssiss',
+        'sssiissssssidsssssiss',
         $invoice_no,
         $serial_no,
         $delivery_month,
@@ -92,6 +104,7 @@ try {
         $quantity,
         $unit_price,
         $status,
+        $highlight_color,
         $notes,
         $uom,
         $sold_to_month,
@@ -104,30 +117,22 @@ try {
         throw new Exception("Execute failed: " . $stmt->error);
     }
     
-    $new_id = $conn->insert_id ?? $stmt->insert_id ?? 0;
-    $stmt->close();
-
-    // Fetch the newly created record
-    $newRecord = null;
-    if ($new_id) {
-        $fetchSql = "SELECT * FROM delivery_records WHERE id = ?";
-        $fetchStmt = $conn->prepare($fetchSql);
-        if ($fetchStmt) {
-            $fetchStmt->bind_param('i', $new_id);
-            $fetchStmt->execute();
-            $result = $fetchStmt->get_result();
-            if ($result && $result->num_rows > 0) {
-                $newRecord = $result->fetch_assoc();
-            }
-            $fetchStmt->close();
+    $new_id = 0;
+    if ($conn instanceof mysqli) {
+        $new_id = intval($conn->insert_id);
+    } else {
+        $idResult = @$conn->query("SELECT last_insert_rowid() AS id");
+        if ($idResult) {
+            $idRow = $idResult->fetch_assoc();
+            $new_id = intval($idRow['id'] ?? 0);
         }
     }
+    $stmt->close();
 
     echo json_encode([
         'success' => true,
         'message' => 'Record added successfully',
-        'id' => $new_id,
-        'record' => $newRecord
+        'id' => $new_id
     ]);
 
 } catch (Exception $e) {

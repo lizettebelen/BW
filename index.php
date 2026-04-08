@@ -542,6 +542,13 @@ if ($stats['total_delivered'] > 0 && $months_with_data > 0) {
                     </a>
                 </li>
 
+                <li class="menu-item">
+                    <a href="inquiry.php" class="menu-link">
+                        <i class="fas fa-file-invoice"></i>
+                        <span class="menu-label">Inquiry</span>
+                    </a>
+                </li>
+
                 <!-- Delivery Records -->
                 <li class="menu-item">
                     <a href="delivery-records.php" class="menu-link">

@@ -426,6 +426,12 @@ foreach ($topCompanies as $company) {
                         <span class="menu-label">Sales Records</span>
                     </a>
                 </li>
+                    <li class="menu-item">
+                        <a href="inquiry.php" class="menu-link">
+                            <i class="fas fa-file-invoice"></i>
+                            <span class="menu-label">Inquiry</span>
+                        </a>
+                    </li>
 
                 <!-- Delivery Records -->
                 <li class="menu-item">

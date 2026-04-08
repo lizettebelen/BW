@@ -7,6 +7,38 @@ if (empty($_SESSION['user_id'])) {
 
 require_once 'db_config.php';
 
+function identifyGrouping(string $itemName, string $groupings = ''): string {
+    $grouping = strtolower(trim($groupings));
+    if ($grouping !== '') {
+        if (strpos($grouping, 'multi') !== false || strpos($grouping, 'group b') !== false) {
+            return 'Group B - Multi Gas';
+        }
+        if (strpos($grouping, 'single') !== false || strpos($grouping, 'group a') !== false) {
+            return 'Group A - Single Gas';
+        }
+    }
+
+    $lowerName = strtolower($itemName);
+
+    // Multi Gas indicators
+    if (strpos($lowerName, 'multi') !== false || 
+        strpos($lowerName, 'quattro') !== false || 
+        strpos($lowerName, 'quad') !== false ||
+        strpos($lowerName, 'o2/lel/h2s/co') !== false ||
+        preg_match('/o2.*lel|lel.*o2/', $lowerName)) {
+        return 'Group B - Multi Gas';
+    }
+
+    // Single Gas indicators
+    if (strpos($lowerName, 'single') !== false ||
+        preg_match('/\b(O2|LEL|H2S|CO)\b/i', $lowerName)) {
+        return 'Group A - Single Gas';
+    }
+
+    // Default to Single Gas if unclear
+    return 'Group A - Single Gas';
+}
+
 // Fetch all unique item_codes with their stats from delivery_records (inventory)
 $allModels = [];
 $groupA = [];  // Single Gas Detectors
@@ -31,7 +63,6 @@ $result = $conn->query("
     WHERE company_name = 'Stock Addition'
       AND item_code IS NOT NULL 
       AND item_code != ''
-      AND (box_code IS NULL OR box_code = '')
     GROUP BY item_code
     HAVING item_name IS NOT NULL AND item_name != ''
     ORDER BY total_qty DESC
@@ -49,28 +80,11 @@ if ($result) {
         
         $allModels[] = $row;
         
-        // Determine group based on groupings field
-        $grouping = strtolower(trim($row['groupings']));
-        
-        // If groupings field is empty, auto-detect from item name (same logic as inventory.php)
-        if (empty($grouping)) {
-            $lowerName = strtolower($name);
-            if (strpos($lowerName, 'multi') !== false || 
-                strpos($lowerName, 'quattro') !== false || 
-                strpos($lowerName, 'quad') !== false ||
-                strpos($lowerName, 'o2/lel/h2s/co') !== false ||
-                preg_match('/o2.*lel|lel.*o2/', $lowerName)) {
-                $grouping = 'group b - multi gas';
-            } else {
-                $grouping = 'group a - single gas';
-            }
-        }
-        
-        // Check if groupings field explicitly states the group
-        if (strpos($grouping, 'multi') !== false || strpos($grouping, 'group b') !== false) {
+        $groupLabel = identifyGrouping($name, (string) ($row['groupings'] ?? ''));
+
+        if ($groupLabel === 'Group B - Multi Gas') {
             $groupB[] = $row;
         } else {
-            // Default to Group A (Single Gas) for everything else
             $groupA[] = $row;
         }
     }
@@ -517,6 +531,13 @@ $groupings = [
                     </a>
                 </li>
 
+                <li class="menu-item">
+                    <a href="inquiry.php" class="menu-link">
+                        <i class="fas fa-file-invoice"></i>
+                        <span class="menu-label">Inquiry</span>
+                    </a>
+                </li>
+
                 <!-- Delivery Records -->
                 <li class="menu-item">
                     <a href="delivery-records.php" class="menu-link">
@@ -753,51 +774,6 @@ $groupings = [
                         <?php endforeach; ?>
                     </tbody>
                 </table>
-            </div>
-        </div>
-
-        <!-- Stats Comparison -->
-        <div style="margin-top: 48px;">
-            <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
-                <i class="fas fa-chart-bar" style="color: #00d9ff;"></i> Group Comparison
-            </h2>
-            
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
-                <!-- Group A Stats -->
-                <div style="background: linear-gradient(135deg, rgba(30, 79, 160, 0.1) 0%, rgba(30, 79, 160, 0.05) 100%); border: 1px solid rgba(30, 79, 160, 0.3); border-radius: 10px; padding: 20px;">
-                    <div style="font-size: 14px; font-weight: 600; color: #6ea8fe; margin-bottom: 16px; display: flex; align-items: center; gap: 6px;">
-                        <span style="width: 8px; height: 8px; background: #1e4fa0; border-radius: 50%;"></span>
-                        Group A - Single Gas
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        <div>
-                            <div style="font-size: 24px; font-weight: 700; color: #6ea8fe;"><?php echo $statsA['count']; ?></div>
-                            <div style="font-size: 11px; color: var(--color-text-lighter); text-transform: uppercase; margin-top: 4px;">Models</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 24px; font-weight: 700; color: #6ea8fe;"><?php echo $statsA['qty']; ?></div>
-                            <div style="font-size: 11px; color: var(--color-text-lighter); text-transform: uppercase; margin-top: 4px;">Units</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Group B Stats -->
-                <div style="background: linear-gradient(135deg, rgba(8, 145, 178, 0.1) 0%, rgba(8, 145, 178, 0.05) 100%); border: 1px solid rgba(8, 145, 178, 0.3); border-radius: 10px; padding: 20px;">
-                    <div style="font-size: 14px; font-weight: 600; color: #4dd0e1; margin-bottom: 16px; display: flex; align-items: center; gap: 6px;">
-                        <span style="width: 8px; height: 8px; background: #0891b2; border-radius: 50%;"></span>
-                        Group B - Multi Gas
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        <div>
-                            <div style="font-size: 24px; font-weight: 700; color: #4dd0e1;"><?php echo $statsB['count']; ?></div>
-                            <div style="font-size: 11px; color: var(--color-text-lighter); text-transform: uppercase; margin-top: 4px;">Models</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 24px; font-weight: 700; color: #4dd0e1;"><?php echo $statsB['qty']; ?></div>
-                            <div style="font-size: 11px; color: var(--color-text-lighter); text-transform: uppercase; margin-top: 4px;">Units</div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
 

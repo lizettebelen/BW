@@ -62,6 +62,178 @@ function getDayFromDate($dateStr) {
     return intval(date('j', $timestamp)); // Returns day without leading zeros
 }
 
+// Infer grouping label from free-form row text when Category/Groupings is not provided.
+function inferGroupingFromText($text) {
+    $value = strtolower(trim((string) $text));
+    if ($value === '') return '';
+
+    $value = preg_replace('/--+>|->|=>|→/', ' to ', $value);
+    $value = preg_replace('/\s+/', ' ', $value);
+
+    if (strpos($value, 'katay') !== false) return 'katay';
+    if (strpos($value, 'send to andison') !== false || strpos($value, 'send to andiso') !== false) return 'send to andison';
+    if (strpos($value, 'warranty replacement') !== false || strpos($value, 'warranty replacemer') !== false) return 'warranty replacement';
+    if (strpos($value, 'warranty to purchase') !== false || strpos($value, 'swapping') !== false) return 'warranty to purchase';
+    if (strpos($value, 'purchase to warranty') !== false) return 'purchase --> warranty';
+
+    return '';
+}
+
+function inferGroupingFromColor($hexColor) {
+    $hex = strtoupper(trim((string) $hexColor));
+    if ($hex === '') return '';
+    if ($hex[0] !== '#') $hex = '#' . $hex;
+    if (!preg_match('/^#[0-9A-F]{6}$/', $hex)) return '';
+
+    $distance = function($a, $b) {
+        $ar = [
+            hexdec(substr($a, 1, 2)),
+            hexdec(substr($a, 3, 2)),
+            hexdec(substr($a, 5, 2)),
+        ];
+        $br = [
+            hexdec(substr($b, 1, 2)),
+            hexdec(substr($b, 3, 2)),
+            hexdec(substr($b, 5, 2)),
+        ];
+        $dr = $ar[0] - $br[0];
+        $dg = $ar[1] - $br[1];
+        $db = $ar[2] - $br[2];
+        return sqrt(($dr * $dr) + ($dg * $dg) + ($db * $db));
+    };
+
+    $palette = [
+        'katay' => ['#800080', '#7030A0', '#9933CC', '#8E44AD'],
+        'send to andison' => ['#FFFF00', '#FFD966', '#F1C232', '#FFEB3B'],
+        'warranty replacement' => ['#FF0000', '#C00000', '#E74C3C', '#D32F2F'],
+        'warranty to purchase' => ['#0000FF', '#4472C4', '#1F4E78', '#2F75B5'],
+        'purchase --> warranty' => ['#FF00FF', '#FF66CC', '#E91E63', '#F4B6E5'],
+    ];
+
+    $bestGroup = '';
+    $bestDistance = PHP_FLOAT_MAX;
+
+    foreach ($palette as $group => $swatches) {
+        foreach ($swatches as $swatch) {
+            $currentDistance = $distance($hex, $swatch);
+            if ($currentDistance < $bestDistance) {
+                $bestDistance = $currentDistance;
+                $bestGroup = $group;
+            }
+        }
+    }
+
+    // Accept close shades to handle Excel tint/theme variations.
+    return ($bestDistance <= 145) ? $bestGroup : '';
+}
+
+function inferGroupingFromStyles($highlightColor, $cellStylesJson) {
+    $candidates = [];
+
+    $highlight = trim((string) $highlightColor);
+    if ($highlight !== '' && $highlight !== '-') {
+        $candidates[] = $highlight;
+    }
+
+    if (!empty($cellStylesJson)) {
+        $decoded = json_decode((string) $cellStylesJson, true);
+        if (is_array($decoded)) {
+            $priorityFields = ['groupings', 'status', 'notes', 'item_name', 'item_code', 'invoice_no', 'serial_no'];
+
+            foreach ($priorityFields as $fieldName) {
+                if (!empty($decoded[$fieldName])) {
+                    $value = $decoded[$fieldName];
+                    if (is_array($value)) {
+                        if (!empty($value['bg'])) $candidates[] = $value['bg'];
+                        if (!empty($value['text'])) $candidates[] = $value['text'];
+                    } else {
+                        $candidates[] = $value;
+                    }
+                }
+            }
+
+            foreach ($decoded as $colorValue) {
+                if (is_array($colorValue)) {
+                    if (!empty($colorValue['bg'])) $candidates[] = $colorValue['bg'];
+                    if (!empty($colorValue['text'])) $candidates[] = $colorValue['text'];
+                } else {
+                    $candidates[] = $colorValue;
+                }
+            }
+        }
+    }
+
+    foreach ($candidates as $colorCandidate) {
+        $inferred = inferGroupingFromColor($colorCandidate);
+        if ($inferred !== '') {
+            return $inferred;
+        }
+    }
+
+    return '';
+}
+
+function ensureHighlightMemoryTable($conn, bool $isMysql): void {
+    if ($isMysql) {
+        $sql = "CREATE TABLE IF NOT EXISTS delivery_highlight_memory (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            dataset_name VARCHAR(50) NOT NULL,
+            invoice_no VARCHAR(100) DEFAULT '',
+            item_code VARCHAR(100) DEFAULT '',
+            serial_no VARCHAR(150) DEFAULT '',
+            sold_to VARCHAR(255) DEFAULT '',
+            delivery_date VARCHAR(50) DEFAULT '',
+            highlight_color VARCHAR(20) DEFAULT NULL,
+            cell_styles LONGTEXT DEFAULT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_dataset_record (dataset_name, invoice_no, item_code, serial_no, sold_to, delivery_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+    } else {
+        $sql = "CREATE TABLE IF NOT EXISTS delivery_highlight_memory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dataset_name VARCHAR(50) NOT NULL,
+            invoice_no VARCHAR(100) DEFAULT '',
+            item_code VARCHAR(100) DEFAULT '',
+            serial_no VARCHAR(150) DEFAULT '',
+            sold_to VARCHAR(255) DEFAULT '',
+            delivery_date VARCHAR(50) DEFAULT '',
+            highlight_color VARCHAR(20) DEFAULT NULL,
+            cell_styles TEXT DEFAULT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (dataset_name, invoice_no, item_code, serial_no, sold_to, delivery_date)
+        )";
+    }
+
+    $conn->query($sql);
+}
+
+function findPreservedHighlight($conn, string $datasetName, string $invoiceNo, string $itemCode, string $serialNo, string $soldTo, string $deliveryDate): array {
+    $soldToNorm = strtolower(trim($soldTo));
+
+    $stmt = $conn->prepare("SELECT highlight_color, cell_styles
+                            FROM delivery_highlight_memory
+                            WHERE dataset_name = ?
+                              AND invoice_no = ?
+                              AND item_code = ?
+                              AND serial_no = ?
+                              AND sold_to = ?
+                              AND delivery_date = ?
+                            LIMIT 1");
+    $stmt->bind_param('ssssss', $datasetName, $invoiceNo, $itemCode, $serialNo, $soldToNorm, $deliveryDate);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $row = ($res && $res->num_rows > 0) ? $res->fetch_assoc() : null;
+
+    if (!$row) {
+        return ['highlight_color' => '', 'cell_styles' => ''];
+    }
+
+    return [
+        'highlight_color' => trim((string)($row['highlight_color'] ?? '')),
+        'cell_styles' => trim((string)($row['cell_styles'] ?? '')),
+    ];
+}
+
 // Column mapping - maps various Excel column names to database fields
 $column_mappings = [
     // Invoice number variations
@@ -108,10 +280,10 @@ $column_mappings = [
     'serial_no' => 'serial_no',
     
     // Date variations
-    'Date' => 'date',
-    'DATE' => 'date',
-    'date' => 'date',
-    'Order Date' => 'date',
+    'Date' => 'record_date',
+    'DATE' => 'record_date',
+    'date' => 'record_date',
+    'Order Date' => 'record_date',
     
     // Date delivered variations
     'Date Delivered' => 'date_delivered',
@@ -150,20 +322,40 @@ $column_mappings = [
     'notes' => 'notes',
     'Note' => 'notes',
     
-    // Company name / Sold To variations
+    // Company name variations
     'Company_Name' => 'company_name',
     'Company' => 'company_name',
     'Client' => 'company_name',
     'Customer' => 'company_name',
-    'SOLD TO' => 'company_name',
-    'Sold To' => 'company_name',
-    'SOLD TO COMPANIES' => 'company_name',
-    'Sold To Companies' => 'company_name',
+
+    // Sold To variations
+    'SOLD TO' => 'sold_to',
+    'Sold To' => 'sold_to',
+    'SoldTo' => 'sold_to',
+    'sold_to' => 'sold_to',
+    'SOLD TO COMPANIES' => 'sold_to',
+    'Sold To Companies' => 'sold_to',
     
     // Status variations
     'Status' => 'status',
     'STATUS' => 'status',
     'status' => 'status',
+
+    // Excel highlight / fill color variations
+    'Highlight Color' => 'highlight_color',
+    'HIGHLIGHT COLOR' => 'highlight_color',
+    'highlight_color' => 'highlight_color',
+    'Sheet Color' => 'highlight_color',
+    'SHEET COLOR' => 'highlight_color',
+    'sheet_color' => 'highlight_color',
+    'Fill Color' => 'highlight_color',
+    'FILL COLOR' => 'highlight_color',
+    'fill_color' => 'highlight_color',
+
+    // Imported per-cell style JSON
+    'Cell Styles' => 'cell_styles',
+    'CELL STYLES' => 'cell_styles',
+    'cell_styles' => 'cell_styles',
     
     // UOM (Unit of Measure)
     'UOM' => 'uom',
@@ -182,12 +374,27 @@ $column_mappings = [
     'SOLD TO DAY' => 'sold_to_day',
     'sold_to_day' => 'sold_to_day',
     
-    // Groupings
+    // Groupings / Category / Color / By Color variations
     'Groupings' => 'groupings',
     'GROUPINGS' => 'groupings',
     'groupings' => 'groupings',
+    'Category' => 'groupings',
+    'CATEGORY' => 'groupings',
+    'category' => 'groupings',
     'Grouping' => 'groupings',
     'Group' => 'groupings',
+    'By Color' => 'groupings',
+    'BY COLOR' => 'groupings',
+    'by color' => 'groupings',
+    'Color' => 'groupings',
+    'COLOR' => 'groupings',
+    'color' => 'groupings',
+    'Type' => 'groupings',
+    'TYPE' => 'groupings',
+    'type' => 'groupings',
+    'Classification' => 'groupings',
+    'CLASSIFICATION' => 'groupings',
+    'classification' => 'groupings',
 ];
 
 // Build lowercase version of mappings for case-insensitive lookup
@@ -218,12 +425,36 @@ try {
     if (!$colExists) {
         $conn->query('ALTER TABLE delivery_records ADD COLUMN dataset_name VARCHAR(50) DEFAULT NULL');
     }
-    // Tag any pre-existing untagged rows as data1 (imported before this feature existed)
-    $conn->query("UPDATE delivery_records SET dataset_name = 'data1' WHERE dataset_name IS NULL OR dataset_name = ''");
-
+    if ($isMysql) {
+        $soldToCol = $conn->query("SHOW COLUMNS FROM delivery_records LIKE 'sold_to'");
+        if (!$soldToCol || $soldToCol->num_rows === 0) {
+            $conn->query("ALTER TABLE delivery_records ADD COLUMN sold_to VARCHAR(255) DEFAULT NULL AFTER company_name");
+        }
+        $highlightCol = $conn->query("SHOW COLUMNS FROM delivery_records LIKE 'highlight_color'");
+        if (!$highlightCol || $highlightCol->num_rows === 0) {
+            $conn->query("ALTER TABLE delivery_records ADD COLUMN highlight_color VARCHAR(20) DEFAULT NULL AFTER status");
+        }
+        $cellStylesCol = $conn->query("SHOW COLUMNS FROM delivery_records LIKE 'cell_styles'");
+        if (!$cellStylesCol || $cellStylesCol->num_rows === 0) {
+            $conn->query("ALTER TABLE delivery_records ADD COLUMN cell_styles LONGTEXT DEFAULT NULL AFTER highlight_color");
+        }
+    } else {
+        $hasSoldTo = false;
+        $chkSoldTo = $conn->query('PRAGMA table_info(delivery_records)');
+        if ($chkSoldTo) {
+            while ($r = $chkSoldTo->fetch_assoc()) {
+                if (strtolower($r['name']) === 'sold_to') { $hasSoldTo = true; break; }
+            }
+        }
+        if (!$hasSoldTo) {
+            $conn->query('ALTER TABLE delivery_records ADD COLUMN sold_to VARCHAR(255) DEFAULT NULL');
+        }
+    }
     // Get dataset_name from request (e.g. data1, data2)
     $dataset_name = isset($request['dataset_name']) ? trim(strval($request['dataset_name'])) : '';
     if (empty($dataset_name)) $dataset_name = 'data1';
+
+    ensureHighlightMemoryTable($conn, $isMysql);
 
     // Detect all columns from the uploaded data and auto-create missing ones
     $all_columns_in_data = [];
@@ -333,12 +564,14 @@ try {
             $serial_no = isset($mapped['serial_no']) ? trim(strval($mapped['serial_no'])) : '';
             $notes = isset($mapped['notes']) ? trim(strval($mapped['notes'])) : '';
             $company_name = isset($mapped['company_name']) ? trim(strval($mapped['company_name'])) : 'Andison Industrial';
+            $sold_to = isset($mapped['sold_to']) ? trim(strval($mapped['sold_to'])) : '';
             $status = isset($mapped['status']) ? trim(strval($mapped['status'])) : 'Delivered';
             $uom = isset($mapped['uom']) ? trim(strval($mapped['uom'])) : '';
             // Year starts at 0; will be filled from explicit YEAR column, delivery_date, or current year
             $year = isset($mapped['year']) ? intval($mapped['year']) : 0;
             
             // Handle dates
+            $record_date = null;
             $delivery_date = null;
             $delivery_month = '';
             $delivery_day = 0;
@@ -351,6 +584,16 @@ try {
                 $delivery_day = intval($mapped['delivery_day']);
             }
             
+            // Try the generic Excel Date column first (kept separate from Date Delivered)
+            if (!empty($mapped['record_date'])) {
+                $record_date = excelDateToDate($mapped['record_date']);
+                if ($record_date) {
+                    if (empty($delivery_month))  $delivery_month = getMonthFromDate($record_date);
+                    if ($delivery_day == 0)       $delivery_day   = getDayFromDate($record_date);
+                    if ($year <= 0)               $year           = intval(date('Y', strtotime($record_date)));
+                }
+            }
+
             // Try date_delivered column (may be Excel serial or date string)
             if (!empty($mapped['date_delivered'])) {
                 $delivery_date = excelDateToDate($mapped['date_delivered']);
@@ -358,16 +601,6 @@ try {
                     if (empty($delivery_month))  $delivery_month = getMonthFromDate($delivery_date);
                     if ($delivery_day == 0)       $delivery_day   = getDayFromDate($delivery_date);
                     if ($year <= 0)               $year           = intval(date('Y', strtotime($delivery_date)));
-                }
-            }
-            
-            // Fallback to generic date field
-            if ((empty($delivery_month) || $delivery_day == 0) && !empty($mapped['date'])) {
-                $temp_date = excelDateToDate($mapped['date']);
-                if ($temp_date) {
-                    if (empty($delivery_month)) $delivery_month = getMonthFromDate($temp_date);
-                    if ($delivery_day == 0)     $delivery_day   = getDayFromDate($temp_date);
-                    if ($year <= 0)             $year           = intval(date('Y', strtotime($temp_date)));
                 }
             }
             
@@ -412,6 +645,7 @@ try {
             if ($notes == '-') $notes = '';
             if ($serial_no == '-') $serial_no = '';
             if ($company_name == '-') $company_name = '';
+            if ($sold_to == '-') $sold_to = '';
             
             // Handle UOM - store in its own column (no default)
             if ($uom == '-') $uom = '';
@@ -420,11 +654,150 @@ try {
             $sold_to_month = isset($mapped['sold_to_month']) ? trim(strval($mapped['sold_to_month'])) : '';
             $sold_to_day = isset($mapped['sold_to_day']) ? intval($mapped['sold_to_day']) : 0;
             $groupings = isset($mapped['groupings']) ? trim(strval($mapped['groupings'])) : '';
+            $highlight_color = isset($mapped['highlight_color']) ? trim(strval($mapped['highlight_color'])) : '';
+            $cell_styles = '';
+
+            if (isset($mapped['cell_styles'])) {
+                $rawCellStyles = $mapped['cell_styles'];
+                if (is_array($rawCellStyles)) {
+                    $mappedCellStyles = [];
+                    foreach ($rawCellStyles as $sourceField => $colorValue) {
+                        $sourceKey = strtolower(trim((string) $sourceField));
+                        if (!isset($lower_mappings[$sourceKey])) {
+                            continue;
+                        }
+
+                        $mappedField = $lower_mappings[$sourceKey];
+                        if (is_array($colorValue)) {
+                            $styleEntry = [];
+                            $bg = trim((string) ($colorValue['bg'] ?? ''));
+                            $text = trim((string) ($colorValue['text'] ?? ''));
+
+                            if ($bg !== '' && $bg !== '-') {
+                                if ($bg[0] !== '#') $bg = '#' . $bg;
+                                $styleEntry['bg'] = $bg;
+                            }
+
+                            if ($text !== '' && $text !== '-') {
+                                if ($text[0] !== '#') $text = '#' . $text;
+                                $styleEntry['text'] = $text;
+                            }
+
+                            if (!empty($styleEntry)) {
+                                $mappedCellStyles[$mappedField] = $styleEntry;
+                            }
+                            continue;
+                        }
+
+                        $colorString = trim((string) $colorValue);
+                        if ($colorString === '' || $colorString === '-') {
+                            continue;
+                        }
+
+                        if ($colorString[0] !== '#') {
+                            $colorString = '#' . $colorString;
+                        }
+
+                        $mappedCellStyles[$mappedField] = ['bg' => $colorString];
+                    }
+
+                    if (!empty($mappedCellStyles)) {
+                        $cell_styles = json_encode($mappedCellStyles, JSON_UNESCAPED_SLASHES);
+                    }
+                } else {
+                    $cell_styles = trim((string) $rawCellStyles);
+                }
+            }
+
+            if ($highlight_color === '' && !empty($cell_styles)) {
+                $decodedStyles = json_decode($cell_styles, true);
+                if (is_array($decodedStyles)) {
+                    foreach ($decodedStyles as $colorValue) {
+                        if (is_array($colorValue)) {
+                            $bgColor = trim((string) ($colorValue['bg'] ?? ''));
+                            $textColor = trim((string) ($colorValue['text'] ?? ''));
+                            if ($bgColor !== '') {
+                                $highlight_color = $bgColor;
+                                break;
+                            }
+                            if ($textColor !== '') {
+                                $highlight_color = $textColor;
+                                break;
+                            }
+                            continue;
+                        }
+
+                        $flatColor = trim((string) $colorValue);
+                        if ($flatColor !== '') {
+                            $highlight_color = $flatColor;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Restore previously saved highlights when this dataset was deleted and imported again.
+            if ((trim($highlight_color) === '' && trim($cell_styles) === '') && !empty($invoice_no) && !empty($item_code)) {
+                $preserved = findPreservedHighlight(
+                    $conn,
+                    $dataset_name,
+                    $invoice_no,
+                    $item_code,
+                    $serial_no,
+                    $sold_to,
+                    (string)$delivery_date
+                );
+
+                if (!empty($preserved['highlight_color'])) {
+                    $highlight_color = $preserved['highlight_color'];
+                }
+                if (!empty($preserved['cell_styles'])) {
+                    $cell_styles = $preserved['cell_styles'];
+                }
+            }
             
             // Handle "-" values
             if ($sold_to_month == '-') $sold_to_month = '';
             if ($groupings == '-') $groupings = '';
+            if ($highlight_color == '-') $highlight_color = '';
+            if ($cell_styles == '-') $cell_styles = '';
             if ($delivery_month == '-') $delivery_month = '';
+
+            // If category/groupings is blank, infer it from text fields that often contain sheet labels.
+            if (empty($groupings)) {
+                $mappedTextParts = [];
+                foreach ($mapped as $mappedValue) {
+                    if (is_scalar($mappedValue)) {
+                        $mappedTextParts[] = strval($mappedValue);
+                    }
+                }
+
+                $inferenceSource = implode(' ', [
+                    $invoice_no,
+                    $serial_no,
+                    $item_code,
+                    $item_name,
+                    $company_name,
+                    $sold_to,
+                    $status,
+                    $notes,
+                    $delivery_date,
+                    isset($mapped['record_date']) ? strval($mapped['record_date']) : '',
+                    implode(' ', $mappedTextParts),
+                ]);
+                $inferredGrouping = inferGroupingFromText($inferenceSource);
+                if (!empty($inferredGrouping)) {
+                    $groupings = $inferredGrouping;
+                }
+            }
+
+            // If still blank, infer from row/cell colors (fill or font) captured during upload parsing.
+            if (empty($groupings)) {
+                $inferredByColor = inferGroupingFromStyles($highlight_color, $cell_styles);
+                if (!empty($inferredByColor)) {
+                    $groupings = $inferredByColor;
+                }
+            }
             
             // Default status if empty
             if (empty($status) || $status == '-') {
@@ -436,8 +809,8 @@ try {
 
             // Insert into database
             $sql = "INSERT INTO delivery_records 
-                    (invoice_no, serial_no, delivery_month, delivery_day, delivery_year, delivery_date, item_code, item_name, company_name, quantity, status, notes, uom, sold_to_month, sold_to_day, groupings, dataset_name)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    (invoice_no, serial_no, delivery_month, delivery_day, delivery_year, record_date, delivery_date, item_code, item_name, company_name, sold_to, quantity, status, highlight_color, cell_styles, notes, uom, sold_to_month, sold_to_day, groupings, dataset_name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             
             $stmt = $conn->prepare($sql);
             if (!$stmt) {
@@ -445,22 +818,26 @@ try {
             }
 
             // Types: s=invoice_no, s=serial_no, s=delivery_month, i=delivery_day,
-            //        i=delivery_year, s=delivery_date, s=item_code, s=item_name,
-            //        s=company_name, i=quantity, s=status, s=notes, s=uom,
+            //        i=delivery_year, s=record_date, s=delivery_date, s=item_code, s=item_name,
+            //        s=company_name, s=sold_to, i=quantity, s=status, s=highlight_color, s=cell_styles, s=notes, s=uom,
             //        s=sold_to_month, i=sold_to_day, s=groupings, s=dataset_name
             $stmt->bind_param(
-                'sssiissssississss',
+                'sssiissssssissssssiss',
                 $invoice_no,
                 $serial_no,
                 $delivery_month,
                 $delivery_day,
                 $year,
+                $record_date,
                 $delivery_date,
                 $item_code,
                 $item_name,
                 $company_name,
+                $sold_to,
                 $quantity,
                 $status,
+                $highlight_color,
+                $cell_styles,
                 $notes,
                 $uom,
                 $sold_to_month,

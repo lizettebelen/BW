@@ -9,6 +9,14 @@ if (empty($_SESSION['user_id'])) {
 require_once 'db_config.php';
 require_once 'dataset-indicator.php';
 
+function resolveClientCompanyExpr(): string {
+    return "NULLIF(TRIM(CASE
+                WHEN sold_to IS NOT NULL AND sold_to != '' THEN sold_to
+                WHEN company_name IS NOT NULL AND company_name != '' AND company_name NOT IN ('Stock Addition', 'Orders', 'Delivery Records') THEN company_name
+                ELSE ''
+            END), '')";
+}
+
 // Get selected dataset from URL or session
 $selected_dataset = isset($_GET['dataset']) ? trim($_GET['dataset']) : (isset($_SESSION['active_dataset']) ? $_SESSION['active_dataset'] : 'all');
 
@@ -26,17 +34,18 @@ if ($selected_dataset !== 'all' && $selected_dataset !== '') {
 
 // Get all unique companies with their stats
 $companies = [];
+$clientCompanyExpr = resolveClientCompanyExpr();
 $result = $conn->query("
     SELECT 
-        company_name, 
+        $clientCompanyExpr as company_name,
         COUNT(*) as total_orders,
         SUM(quantity) as total_units,
         COUNT(DISTINCT item_code) as unique_products,
         MAX(delivery_date) as last_delivery,
         MAX(delivery_month) as last_month
     FROM delivery_records 
-    WHERE company_name IS NOT NULL AND company_name != '' AND company_name != ''$dataset_filter
-    GROUP BY company_name 
+    WHERE $clientCompanyExpr IS NOT NULL$dataset_filter
+    GROUP BY $clientCompanyExpr 
     ORDER BY total_units DESC
 ");
 if ($result) {
@@ -409,6 +418,14 @@ foreach ($companies as $c) {
                     <a href="sales-records.php" class="menu-link">
                         <i class="fas fa-calendar-alt"></i>
                         <span class="menu-label">Sales Records</span>
+                    </a>
+                </li>
+
+                <!-- Inquiry -->
+                <li class="menu-item">
+                    <a href="inquiry.php" class="menu-link">
+                        <i class="fas fa-file-invoice"></i>
+                        <span class="menu-label">Inquiry</span>
                     </a>
                 </li>
 

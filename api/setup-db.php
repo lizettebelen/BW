@@ -27,12 +27,16 @@ if ($conn instanceof mysqli) {
       `delivery_month` VARCHAR(20) NOT NULL DEFAULT '',
       `delivery_day` INT(2) NOT NULL DEFAULT 0,
       `delivery_year` INT(4) NOT NULL DEFAULT 0,
+    `record_date` DATE NULL DEFAULT NULL,
       `delivery_date` DATE NULL DEFAULT NULL,
       `item_code` VARCHAR(50) NOT NULL DEFAULT '',
       `item_name` VARCHAR(255) NULL DEFAULT NULL,
       `company_name` VARCHAR(255) NOT NULL DEFAULT 'Andison Industrial',
+    `sold_to` VARCHAR(255) NULL DEFAULT NULL,
       `quantity` INT(11) NOT NULL DEFAULT 0,
       `status` VARCHAR(50) NOT NULL DEFAULT 'Delivered',
+    `highlight_color` VARCHAR(20) NULL DEFAULT NULL,
+    `cell_styles` LONGTEXT NULL DEFAULT NULL,
       `notes` TEXT NULL DEFAULT NULL,
       `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -61,7 +65,11 @@ if ($conn instanceof mysqli) {
         'invoice_no'     => "ALTER TABLE `delivery_records` ADD COLUMN `invoice_no` VARCHAR(50) NULL DEFAULT NULL AFTER `id`",
         'serial_no'      => "ALTER TABLE `delivery_records` ADD COLUMN `serial_no` VARCHAR(100) NULL DEFAULT NULL AFTER `invoice_no`",
         'delivery_year'  => "ALTER TABLE `delivery_records` ADD COLUMN `delivery_year` INT(4) NOT NULL DEFAULT 0 AFTER `delivery_day`",
+        'record_date'    => "ALTER TABLE `delivery_records` ADD COLUMN `record_date` DATE NULL DEFAULT NULL AFTER `delivery_year`",
         'delivery_date'  => "ALTER TABLE `delivery_records` ADD COLUMN `delivery_date` DATE NULL DEFAULT NULL AFTER `delivery_year`",
+        'sold_to'        => "ALTER TABLE `delivery_records` ADD COLUMN `sold_to` VARCHAR(255) NULL DEFAULT NULL AFTER `company_name`",
+        'highlight_color' => "ALTER TABLE `delivery_records` ADD COLUMN `highlight_color` VARCHAR(20) NULL DEFAULT NULL AFTER `status`",
+        'cell_styles'    => "ALTER TABLE `delivery_records` ADD COLUMN `cell_styles` LONGTEXT NULL DEFAULT NULL AFTER `highlight_color`",
     ];
     foreach ($add_if_missing as $col => $sql) {
         if (!in_array($col, $existing)) {

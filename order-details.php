@@ -53,6 +53,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $poStatus = 'No PO';
         }
 
+        if ($poStatus === 'Received' && $poNumber === '') {
+            $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'PO Number is required before setting PO Status to Received.'];
+            header('Location: order-details.php?id=' . $orderId, true, 302);
+            exit;
+        }
+
         $allowedStatus = ['Pending', 'Ready for Delivery', 'In Transit', 'Delivered', 'Received'];
         if (!in_array($status, $allowedStatus, true)) {
             $status = 'Pending';
@@ -106,67 +112,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($stmt->execute()) {
                 if ($poStatus === 'Received') {
-                    $conn->begin_transaction();
-                    try {
-                        // Move received order quantity into Stock Addition inventory.
-                        $checkInvStmt = $conn->prepare("SELECT id, quantity FROM delivery_records WHERE item_code = ? AND company_name = 'Stock Addition' LIMIT 1");
-                        if (!$checkInvStmt) {
-                            throw new Exception('Failed to prepare inventory lookup.');
+                    $moveStmt = $conn->prepare("UPDATE delivery_records
+                                               SET company_name = 'Delivery Records',
+                                                   status = CASE
+                                                       WHEN status IS NULL OR status = '' OR status = 'Pending' THEN 'Ready for Delivery'
+                                                       ELSE status
+                                                   END,
+                                                   updated_at = CURRENT_TIMESTAMP
+                                               WHERE id = ? AND company_name = 'Orders'");
+                    if ($moveStmt) {
+                        $moveStmt->bind_param('i', $orderId);
+                        if ($moveStmt->execute()) {
+                            $_SESSION['order_detail_flash'] = ['type' => 'success', 'message' => 'Order marked as Received and moved to Delivery Records.'];
+                            $moveStmt->close();
+                            header('Location: delivery-records.php', true, 302);
+                            exit;
                         }
-                        $checkInvStmt->bind_param('s', $itemCode);
-                        if (!$checkInvStmt->execute()) {
-                            $checkInvStmt->close();
-                            throw new Exception('Failed to check inventory item.');
-                        }
-                        $invResult = $checkInvStmt->get_result();
-                        $invRow = $invResult ? $invResult->fetch_assoc() : null;
-                        $checkInvStmt->close();
-
-                        if ($invRow) {
-                            $newQty = intval($invRow['quantity'] ?? 0) + $quantity;
-                            $updateInvStmt = $conn->prepare("UPDATE delivery_records SET quantity = ?, status = 'Received', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND company_name = 'Stock Addition'");
-                            if (!$updateInvStmt) {
-                                throw new Exception('Failed to prepare inventory update.');
-                            }
-                            $invId = intval($invRow['id']);
-                            $updateInvStmt->bind_param('ii', $newQty, $invId);
-                            if (!$updateInvStmt->execute()) {
-                                $updateInvStmt->close();
-                                throw new Exception('Failed to update inventory quantity.');
-                            }
-                            $updateInvStmt->close();
-                        } else {
-                            $insertInvStmt = $conn->prepare("INSERT INTO delivery_records (delivery_month, delivery_day, delivery_year, item_code, item_name, company_name, quantity, unit_price, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'Stock Addition', ?, ?, 'Received', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
-                            if (!$insertInvStmt) {
-                                throw new Exception('Failed to prepare inventory insert.');
-                            }
-                            $insertInvStmt->bind_param('siissid', $deliveryMonth, $deliveryDay, $deliveryYear, $itemCode, $itemName, $quantity, $pesoCost);
-                            if (!$insertInvStmt->execute()) {
-                                $insertInvStmt->close();
-                                throw new Exception('Failed to insert inventory item.');
-                            }
-                            $insertInvStmt->close();
-                        }
-
-                        $deleteOrderStmt = $conn->prepare("DELETE FROM delivery_records WHERE id = ? AND company_name = 'Orders'");
-                        if (!$deleteOrderStmt) {
-                            throw new Exception('Failed to prepare order delete.');
-                        }
-                        $deleteOrderStmt->bind_param('i', $orderId);
-                        if (!$deleteOrderStmt->execute()) {
-                            $deleteOrderStmt->close();
-                            throw new Exception('Failed to remove order after receiving.');
-                        }
-                        $deleteOrderStmt->close();
-
-                        $conn->commit();
-                        $_SESSION['highlight_item_code'] = strtoupper(trim($itemCode));
-                        $_SESSION['order_detail_flash'] = ['type' => 'success', 'message' => 'Order marked as Received and moved to Inventory.'];
-                        header('Location: inventory.php?tab=inventory&highlight=' . urlencode(strtoupper(trim($itemCode))), true, 302);
-                        exit;
-                    } catch (Exception $moveEx) {
-                        $conn->rollback();
-                        $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Order was updated but failed to move to inventory: ' . $moveEx->getMessage()];
+                        $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Order was updated but failed to move to Delivery Records.'];
+                        $moveStmt->close();
+                    } else {
+                        $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Failed to prepare Delivery Records transfer.'];
                     }
                 } else {
                     $_SESSION['order_detail_flash'] = ['type' => 'success', 'message' => 'Order updated successfully.'];
@@ -330,6 +295,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
+            $poStatus = trim((string) ($order['po_status'] ?? 'No PO'));
+            if ($poStatus !== 'Received') {
+                $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Delivery Records can only be created when PO Status is Received.'];
+                header('Location: order-details.php?id=' . $orderId, true, 302);
+                exit;
+            }
+
+            if (trim((string) ($order['po_number'] ?? '')) === '') {
+                $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'PO Number is required before creating Delivery Records.'];
+                header('Location: order-details.php?id=' . $orderId, true, 302);
+                exit;
+            }
+
             if (empty($order['invoice_no'])) {
                 $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Generate invoice first before creating delivery record.'];
                 header('Location: order-details.php?id=' . $orderId, true, 302);
@@ -483,6 +461,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$order) {
                 $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Order not found.'];
                 header('Location: orders.php', true, 302);
+                exit;
+            }
+
+            $poStatus = trim((string) ($order['po_status'] ?? 'No PO'));
+            if ($poStatus !== 'Received') {
+                $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Only orders with PO Status Received can be marked as delivered in Delivery Records.'];
+                header('Location: order-details.php?id=' . $orderId, true, 302);
+                exit;
+            }
+
+            if (trim((string) ($order['po_number'] ?? '')) === '') {
+                $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'PO Number is required before marking as delivered in Delivery Records.'];
+                header('Location: order-details.php?id=' . $orderId, true, 302);
                 exit;
             }
 
@@ -887,6 +878,7 @@ if (preg_match('/Foreign Cost:\s*([\d,]+\.?\d*)/', $orderNotes, $matches)) {
                     <li class="menu-item"><a href="index.php" class="menu-link"><i class="fas fa-chart-line"></i><span class="menu-label">Dashboard</span></a></li>
                     <li class="menu-item"><a href="sales-overview.php" class="menu-link"><i class="fas fa-chart-pie"></i><span class="menu-label">Sales Overview</span></a></li>
                     <li class="menu-item"><a href="sales-records.php" class="menu-link"><i class="fas fa-calendar-alt"></i><span class="menu-label">Sales Records</span></a></li>
+                    <li class="menu-item"><a href="inquiry.php" class="menu-link"><i class="fas fa-file-invoice"></i><span class="menu-label">Inquiry</span></a></li>
                     <li class="menu-item"><a href="delivery-records.php" class="menu-link"><i class="fas fa-truck"></i><span class="menu-label">Delivery Records</span></a></li>
                     <li class="menu-item"><a href="inventory.php" class="menu-link"><i class="fas fa-boxes"></i><span class="menu-label">Inventory</span></a></li>
                     <li class="menu-item"><a href="andison-manila.php" class="menu-link"><i class="fas fa-truck-fast"></i><span class="menu-label">Andison Manila</span></a></li>
@@ -901,7 +893,7 @@ if (preg_match('/Foreign Cost:\s*([\d,]+\.?\d*)/', $orderNotes, $matches)) {
         <main class="main-content">
             <div class="page-header">
                 <h1 class="page-title">Purchase Order: <?php echo h(so_id($orderId)); ?></h1>
-                <a class="back-link" href="inventory.php?tab=orders"><i class="fas fa-arrow-left"></i> Back to Orders</a>
+                <a class="back-link" href="inquiry.php"><i class="fas fa-arrow-left"></i> Back to Inquiry</a>
             </div>
 
             <?php if ($flash): ?>

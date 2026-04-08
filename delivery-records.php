@@ -11,6 +11,23 @@ require_once 'db_config.php';
 // Include dataset indicator helper
 require_once 'dataset-indicator.php';
 
+function isLegendMarkerRow(array $row): bool {
+    $groupings = strtolower(trim((string) ($row['groupings'] ?? '')));
+    $invoice = strtolower(trim((string) ($row['invoice_no'] ?? '')));
+    $itemCode = strtolower(trim((string) ($row['item_code'] ?? '')));
+    $itemName = strtolower(trim((string) ($row['item_name'] ?? '')));
+    $serialNo = strtolower(trim((string) ($row['serial_no'] ?? '')));
+    $quantity = intval($row['quantity'] ?? 0);
+
+    // Hide only the imported worksheet marker/header row, not normal business rows.
+    return $quantity <= 0
+        && $groupings === 'katay'
+        && (strpos($invoice, 'send to andiso') !== false || strpos($invoice, 'send to andison') !== false)
+        && strpos($itemCode, 'warranty replacement') !== false
+        && (strpos($itemName, 'warranty to purchase') !== false || strpos($itemName, 'swapping') !== false)
+        && (strpos($serialNo, 'purchase') !== false && strpos($serialNo, 'warranty') !== false);
+}
+
 // Get selected dataset from URL parameter or session
 $selected_dataset = isset($_GET['dataset']) ? trim($_GET['dataset']) : (isset($_SESSION['active_dataset']) ? $_SESSION['active_dataset'] : 'all');
 
@@ -26,6 +43,9 @@ if ($selected_dataset !== 'all' && $selected_dataset !== '') {
     $dataset_filter = " AND dataset_name = '$safe_dataset'";
 }
 
+// Delivery Records page should never include inquiry/order staging rows.
+$delivery_where = "company_name != 'Orders'";
+
 // Get statistics from database
 $stats = [
     'total_delivered' => 0,
@@ -36,7 +56,7 @@ $stats = [
 ];
 
 // Count by status
-$result = $conn->query("SELECT status, COUNT(*) as count, COALESCE(SUM(quantity), 0) as qty FROM delivery_records WHERE 1=1$dataset_filter GROUP BY status");
+$result = $conn->query("SELECT status, COUNT(*) as count, COALESCE(SUM(quantity), 0) as qty FROM delivery_records WHERE $delivery_where$dataset_filter GROUP BY status");
 if ($result) {
     while ($row = $result->fetch_assoc()) {
         $status = strtolower($row['status']);
@@ -57,9 +77,12 @@ $success_rate = $stats['total_records'] > 0 ? round(($stats['total_delivered'] /
 
 // Get all delivery records (newest first)
 $delivery_records = [];
-$result = $conn->query("SELECT * FROM delivery_records WHERE 1=1$dataset_filter ORDER BY COALESCE(created_at, '1970-01-01 00:00:00') DESC, id DESC");
+$result = $conn->query("SELECT * FROM delivery_records WHERE $delivery_where$dataset_filter ORDER BY COALESCE(created_at, '1970-01-01 00:00:00') DESC, id ASC");
 if ($result) {
     while ($row = $result->fetch_assoc()) {
+        if (isLegendMarkerRow($row)) {
+            continue;
+        }
         $delivery_records[] = $row;
     }
 }
@@ -209,6 +232,228 @@ if (empty($allItems)) {
             border-radius: 8px;
         }
         
+        /* Color Picker Styles */
+        #colorFilters {
+            margin-bottom: 25px;
+        }
+
+        .filter-panel {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .filter-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #a0a0a0;
+            margin: 0;
+        }
+
+        .filter-dropdown {
+            position: relative;
+        }
+
+        .filter-toggle-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: #e5edf7;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: 'Poppins', sans-serif;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            min-width: 230px;
+            justify-content: space-between;
+            transition: border-color 0.2s ease, background-color 0.2s ease;
+        }
+
+        .filter-toggle-btn:hover,
+        .filter-toggle-btn.open {
+            border-color: rgba(244, 208, 63, 0.65);
+            background: rgba(244, 208, 63, 0.08);
+        }
+
+        .filter-dropdown-menu {
+            position: absolute;
+            top: calc(100% + 10px);
+            left: 0;
+            width: min(520px, 92vw);
+            background: #1b2434;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 12px;
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+            padding: 12px;
+            z-index: 250;
+            display: none;
+        }
+
+        .filter-dropdown-menu.show {
+            display: block;
+        }
+
+        .filter-dropdown-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .filter-action-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: #c7d3e2;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 11px;
+            cursor: pointer;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .filter-action-btn:hover {
+            background: rgba(244, 208, 63, 0.12);
+            border-color: rgba(244, 208, 63, 0.55);
+            color: #f9d76a;
+        }
+
+        .filter-dropdown-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+            gap: 8px;
+        }
+
+        .filter-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.04);
+            cursor: pointer;
+            color: #d4dfeb;
+            font-size: 12px;
+            text-align: left;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .filter-option:hover {
+            border-color: rgba(244, 208, 63, 0.45);
+            background: rgba(244, 208, 63, 0.08);
+        }
+
+        .filter-option.active {
+            border-color: rgba(81, 207, 102, 0.6);
+            background: rgba(81, 207, 102, 0.14);
+        }
+
+        #categoryFilterSummary {
+            color: inherit;
+            font-weight: 600;
+        }
+
+        .filter-toggle-btn i,
+        .filter-option i {
+            color: inherit;
+        }
+
+        .light-mode .filter-title {
+            color: #3b4f67;
+        }
+
+        .light-mode .filter-toggle-btn {
+            background: #ffffff;
+            border: 1px solid #c7d4e3;
+            color: #1f3a56;
+        }
+
+        .light-mode .filter-toggle-btn:hover,
+        .light-mode .filter-toggle-btn.open {
+            border-color: #e0b322;
+            background: #fff9e8;
+            color: #1b334d;
+        }
+
+        .light-mode .filter-dropdown-menu {
+            background: #ffffff;
+            border: 1px solid #d6e0ea;
+            box-shadow: 0 16px 32px rgba(22, 48, 77, 0.16);
+        }
+
+        .light-mode .filter-action-btn {
+            background: #f2f6fb;
+            border-color: #cdd8e6;
+            color: #274563;
+        }
+
+        .light-mode .filter-action-btn:hover {
+            background: #fff4cc;
+            border-color: #dca915;
+            color: #6b4b00;
+        }
+
+        .light-mode .filter-option {
+            background: #f8fbff;
+            border-color: #d2dceb;
+            color: #1f3a56;
+        }
+
+        .light-mode .filter-option:hover {
+            border-color: #d8ab18;
+            background: #fff9e8;
+            color: #1b334d;
+        }
+
+        .light-mode .filter-option.active {
+            border-color: #2e9e52;
+            background: #eaf9ef;
+            color: #174429;
+        }
+        
+        .color-circle {
+            width: 30px;
+            height: 30px;
+            min-width: auto;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .color-circle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        tr.filtered-match {
+            outline: 2px solid rgba(244, 208, 63, 0.8);
+            outline-offset: -2px;
+            box-shadow: inset 0 0 0 1px rgba(255, 214, 10, 0.28);
+        }
+        
+        @media (max-width: 900px) {
+            .filter-toggle-btn {
+                min-width: 200px;
+            }
+
+            .filter-dropdown-options {
+                grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            }
+        }
+        
         .filter-btn {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -227,6 +472,61 @@ if (empty($allItems)) {
             border-color: #2f5fa7;
             color: #fff;
         }
+
+        .filter-btn.katay {
+            border-color: #7c3aed;
+            color: #c4b5fd;
+        }
+        .filter-btn.katay:hover,
+        .filter-btn.katay.active {
+            background: #7c3aed;
+            border-color: #7c3aed;
+            color: #fff;
+        }
+
+        .filter-btn.send-to-andison {
+            border-color: #facc15;
+            color: #fef08a;
+        }
+        .filter-btn.send-to-andison:hover,
+        .filter-btn.send-to-andison.active {
+            background: #facc15;
+            border-color: #facc15;
+            color: #1f2937;
+        }
+
+        .filter-btn.warranty-replacement {
+            border-color: #ef4444;
+            color: #fca5a5;
+        }
+        .filter-btn.warranty-replacement:hover,
+        .filter-btn.warranty-replacement.active {
+            background: rgba(239, 68, 68, 0.12);
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+
+        .filter-btn.warranty-to-purchase {
+            border-color: #14b8a6;
+            color: #99f6e4;
+        }
+        .filter-btn.warranty-to-purchase:hover,
+        .filter-btn.warranty-to-purchase.active {
+            background: #14b8a6;
+            border-color: #14b8a6;
+            color: #042f2e;
+        }
+
+        .filter-btn.purchase-to-warranty {
+            border-color: #ec4899;
+            color: #fbcfe8;
+        }
+        .filter-btn.purchase-to-warranty:hover,
+        .filter-btn.purchase-to-warranty.active {
+            background: #ec4899;
+            border-color: #ec4899;
+            color: #fff;
+        }
         
         .table-container {
             background: #13172c;
@@ -239,6 +539,48 @@ if (empty($allItems)) {
         /* Hidden rows */
         tr.hidden-row {
             display: none;
+        }
+
+        tr.sheet-highlight {
+            outline: 1px solid var(--sheet-highlight-border, var(--sheet-highlight));
+            outline-offset: -1px;
+        }
+
+        tr.sheet-highlight td {
+            background-color: var(--sheet-highlight-soft, rgba(250, 204, 21, 0.18));
+        }
+
+        tr.sheet-highlight:hover td {
+            background-color: var(--sheet-highlight-soft-hover, rgba(250, 204, 21, 0.26));
+        }
+
+        tr.new-record {
+            outline: 2px solid rgba(244, 208, 63, 0.35);
+            outline-offset: -2px;
+            box-shadow: inset 0 0 0 1px rgba(255, 214, 10, 0.22);
+        }
+
+        tr.new-record td {
+            transition: background-color 0.35s ease, box-shadow 0.35s ease;
+        }
+
+        tr.new-record:hover td {
+            box-shadow: inset 0 0 0 9999px rgba(255, 214, 10, 0.06);
+        }
+
+        .new-pill {
+            display: inline-flex;
+            align-items: center;
+            margin-left: 8px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: #f4d03f;
+            color: #1e2a38;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            vertical-align: middle;
         }
         
         /* Load More Button */
@@ -931,35 +1273,25 @@ if (empty($allItems)) {
             background: #d0e7f7;
         }
 
-        /* Andison Manila Highlight */
-        tr.andison-manila-row {
-            background: linear-gradient(90deg, rgba(255, 214, 10, 0.15) 0%, rgba(255, 214, 10, 0.08) 100%) !important;
-            border-left: 4px solid #ffd60a;
-        }
-
-        tr.andison-manila-row:hover {
-            background: linear-gradient(90deg, rgba(255, 214, 10, 0.25) 0%, rgba(255, 214, 10, 0.15) 100%) !important;
-        }
-
-        tr.andison-manila-row td {
-            color: #fff;
-            font-weight: 500;
-        }
-
+        /* Andison rows should not be auto-highlighted; color comes only from row/cell styles. */
+        tr.andison-manila-row,
         html.light-mode tr.andison-manila-row,
         body.light-mode tr.andison-manila-row {
-            background: linear-gradient(90deg, rgba(255, 193, 7, 0.15) 0%, rgba(255, 193, 7, 0.08) 100%) !important;
-            border-left: 4px solid #ffc107;
+            background: inherit !important;
+            border-left: none;
         }
 
+        tr.andison-manila-row:hover,
         html.light-mode tr.andison-manila-row:hover,
         body.light-mode tr.andison-manila-row:hover {
-            background: linear-gradient(90deg, rgba(255, 193, 7, 0.25) 0%, rgba(255, 193, 7, 0.15) 100%) !important;
+            background: inherit !important;
         }
 
+        tr.andison-manila-row td,
         html.light-mode tr.andison-manila-row td,
         body.light-mode tr.andison-manila-row td {
-            color: #1a3a5c;
+            color: inherit;
+            font-weight: inherit;
         }
 
         /* Loader Styles */
@@ -1142,6 +1474,14 @@ if (empty($allItems)) {
                     </a>
                 </li>
 
+                <!-- Inquiry -->
+                <li class="menu-item">
+                    <a href="inquiry.php" class="menu-link">
+                        <i class="fas fa-file-invoice"></i>
+                        <span class="menu-label">Inquiry</span>
+                    </a>
+                </li>
+
                 <!-- Delivery Records -->
                 <li class="menu-item active">
                     <a href="delivery-records.php" class="menu-link">
@@ -1276,13 +1616,29 @@ if (empty($allItems)) {
             </button>
         </div>
 
-        <!-- Filters -->
-        <div class="filters">
-            <button class="filter-btn active">All</button>
-            <button class="filter-btn">Delivered</button>
-            <button class="filter-btn">In Transit</button>
-            <button class="filter-btn">Pending</button>
-            <button class="filter-btn">Cancelled</button>
+        <!-- Filters: Color Picker UI -->
+        <div class="filters" id="colorFilters">
+            <div class="filter-panel">
+                <label class="filter-title"><i class="fas fa-filter"></i> Filter</label>
+                <div class="filter-dropdown" id="categoryFilterDropdown">
+                    <button type="button" class="filter-toggle-btn" id="categoryFilterToggle" onclick="toggleCategoryFilterDropdown()">
+                        <span id="categoryFilterSummary">All filters</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="filter-dropdown-menu" id="categoryFilterMenu">
+                        <div class="filter-dropdown-actions">
+                            <span style="font-size: 11px; color: #8fa2b8;">Select one or more filters</span>
+                            <div style="display: flex; gap: 6px;">
+                                <button type="button" class="filter-action-btn" onclick="selectAllCategoryFilters()">Select All</button>
+                                <button type="button" class="filter-action-btn" onclick="clearCategoryFilters()">Clear</button>
+                            </div>
+                        </div>
+                        <div class="filter-dropdown-options" id="colorPickerContainer">
+                            <!-- Category options are inserted by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Delivery Table -->
@@ -1290,31 +1646,24 @@ if (empty($allItems)) {
             <table>
                 <thead>
                     <tr>
+                        <th>Category</th>
                         <th>Invoice No.</th>
                         <th>Date</th>
-                        <th>Delivery Month to Andison</th>
-                        <th>Delivery Day to Andison</th>
-                        <th>Year</th>
                         <th id="itemHeader">Item</th>
                         <th>Description</th>
                         <th>Qty.</th>
-                        <th>Unit Price</th>
                         <th>UOM</th>
                         <th>Serial No.</th>
                         <th id="soldToHeader">Sold To</th>
                         <th>Date Delivered</th>
-                        <th id="soldToMonthHeader">Sold To Month</th>
-                        <th id="soldToDayHeader">Sold To Day</th>
-                        <th>Groupings</th>
                         <th>Remarks</th>
-                        <th>Status</th>
-                        <th style="min-width: 160px;">Action</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($delivery_records)): ?>
                     <tr>
-                        <td colspan="19" style="text-align: center; padding: 40px; color: #a0a0a0;">
+                        <td colspan="12" style="text-align: center; padding: 40px; color: #a0a0a0;">
                             <i class="fas fa-inbox" style="font-size: 48px; margin-bottom: 15px; display: block;"></i>
                             No delivery records found. <a href="upload-data.php" style="color: #f4d03f;">Upload data</a> to get started.
                         </td>
@@ -1332,9 +1681,14 @@ if (empty($allItems)) {
                         
                         // Format the Date column from delivery_date
                         $date_col = '';
-                        if (!empty($record['delivery_date'])) {
+                        if (!empty($record['record_date'])) {
+                            $date_col = date('m/d/Y', strtotime($record['record_date']));
+                        } elseif (!empty($record['delivery_date'])) {
                             $date_col = date('m/d/Y', strtotime($record['delivery_date']));
                         }
+
+                        $created_at = !empty($record['created_at']) ? strtotime($record['created_at']) : 0;
+                        $is_new_record = $created_at > 0 && (time() - $created_at) <= 30;
                         
                         // Hide rows beyond initial limit (30)
                         $hidden_class = ($row_index >= 30) ? 'hidden-row' : '';
@@ -1343,20 +1697,13 @@ if (empty($allItems)) {
                         $is_andison = (isset($record['company_name']) && $record['company_name'] === 'to Andison Manila')
                                    || (isset($record['transferred_to']) && $record['transferred_to'] === 'to Andison Manila');
                         $andison_class = $is_andison ? 'andison-manila-row' : '';
-                        // Resolve actual end customer for Andison rows:
-                        // - sold_to: old-style / normalized (company_name='to Andison Manila', sold_to=customer)
-                        // - transferred_to='to Andison Manila': new-style, customer stored in company_name
-                        // - transferred_to=customer (not 'to Andison Manila'): added from delivery-records.php
-                        if (!empty($record['sold_to'])) {
-                            $andison_sold_to = $record['sold_to'];
-                        } elseif (!empty($record['transferred_to']) && $record['transferred_to'] === 'to Andison Manila'
-                                  && !empty($record['company_name']) && $record['company_name'] !== 'to Andison Manila') {
-                            // New-style: transferred_to='to Andison Manila', customer in company_name
-                            $andison_sold_to = $record['company_name'];
-                        } elseif (!empty($record['transferred_to']) && $record['transferred_to'] !== 'to Andison Manila') {
-                            $andison_sold_to = $record['transferred_to'];
-                        } else {
-                            $andison_sold_to = '';
+                        // Keep Sold To output aligned with uploaded sheets.
+                        // For Andison-routed rows, show literal "to Andison Manila".
+                        $display_sold_to = '';
+                        if (!empty($record['sold_to']) && trim((string) $record['sold_to']) !== '-') {
+                            $display_sold_to = trim((string) $record['sold_to']);
+                        } elseif (!empty($record['company_name']) && trim((string) $record['company_name']) !== '-') {
+                            $display_sold_to = trim((string) $record['company_name']);
                         }
 
                         $statusText = trim((string) ($record['status'] ?? 'Pending'));
@@ -1372,37 +1719,129 @@ if (empty($allItems)) {
                         } elseif (strpos($statusLower, 'cancel') !== false) {
                             $statusClass = 'cancelled';
                         }
-                    ?>
-                    <tr data-record-id="<?php echo htmlspecialchars($record['id'] ?? ''); ?>" data-row-index="<?php echo $row_index; ?>" data-dataset="<?php echo htmlspecialchars($record['dataset_name'] ?? '', ENT_QUOTES); ?>" data-sold-to="<?php echo htmlspecialchars($is_andison ? $andison_sold_to : (isset($record['sold_to']) ? $record['sold_to'] : ''), ENT_QUOTES); ?>" class="<?php echo $hidden_class . ' ' . $andison_class; ?>">
-                        <td><?php echo htmlspecialchars($record['invoice_no'] ?? ''); ?></td>
-                        <td><?php echo htmlspecialchars($date_col); ?></td>
-                        <td><?php echo htmlspecialchars($record['delivery_month'] ?? ''); ?></td>
-                        <td><?php echo htmlspecialchars($record['delivery_day'] ?? ''); ?></td>
-                        <td><?php echo htmlspecialchars($record['delivery_year'] ?? ''); ?></td>
-                        <td><?php echo htmlspecialchars($record['item_code'] ?? ''); ?></td>
-                        <td><?php echo htmlspecialchars($record['item_name'] ?? ''); ?></td>
-                        <td><?php echo (!empty($record['quantity']) && $record['quantity'] > 0) ? htmlspecialchars($record['quantity']) : ''; ?></td>
-                        <td><?php echo (isset($record['unit_price']) && floatval($record['unit_price']) > 0) ? 'PHP ' . number_format(floatval($record['unit_price']), 2) : ''; ?></td>
-                        <td><?php echo htmlspecialchars($record['uom'] ?? ''); ?></td>
-                        <td><?php echo htmlspecialchars($record['serial_no'] ?? ''); ?></td>
-                        <td><?php
-                            if ($is_andison) {
-                                echo htmlspecialchars($andison_sold_to);
-                            } else {
-                                echo htmlspecialchars(!empty($record['sold_to']) ? $record['sold_to'] : ($record['company_name'] ?? ''));
+
+                        $highlightColor = trim((string) ($record['highlight_color'] ?? ''));
+                        $highlightStyle = '';
+                        $highlightClass = '';
+                        if (preg_match('/^#?[0-9a-fA-F]{6}$/', $highlightColor)) {
+                            if ($highlightColor[0] !== '#') {
+                                $highlightColor = '#' . $highlightColor;
                             }
-                        ?></td>
-                        <td><?php echo htmlspecialchars($delivery_date); ?></td>
-                        <td><?php echo htmlspecialchars($sold_to_month); ?></td>
-                        <td><?php echo htmlspecialchars($sold_to_day); ?></td>
-                        <td><?php echo htmlspecialchars($record['groupings'] ?? ''); ?></td>
-                        <td><?php echo htmlspecialchars($record['notes'] ?? ''); ?></td>
-                        <td><span class="badge <?php echo htmlspecialchars($statusClass); ?>"><?php echo htmlspecialchars($statusText); ?></span></td>
+
+                            $canonicalMap = [
+                                '#FACC15' => ['#FACC15', '#FFF2CC', '#FFF59D', '#FDE68A', '#F4D03F', '#E8EC8C', '#E7EB89', '#E5EA83', '#E3E97D'],
+                                '#14B8A6' => ['#14B8A6', '#B7DEE8', '#A7E3DE', '#9DD9D2', '#4BACC6'],
+                                '#EF4444' => ['#EF4444', '#FF0000', '#DC2626', '#FFC7CE', '#F8CBAD', '#F4AAAA', '#C0504D'],
+                                '#7C3AED' => ['#7C3AED', '#D9B3D9', '#D7BDE2', '#CFA8D8', '#8064A2'],
+                                '#EC4899' => ['#EC4899', '#E79CC8', '#F4B6D7', '#F8C8DC', '#FF99CC'],
+                            ];
+
+                            $toRgb = function(string $hex): array {
+                                $h = strtoupper(ltrim($hex, '#'));
+                                return [
+                                    hexdec(substr($h, 0, 2)),
+                                    hexdec(substr($h, 2, 2)),
+                                    hexdec(substr($h, 4, 2)),
+                                ];
+                            };
+
+                            $distance = function(array $a, array $b): float {
+                                $dr = $a[0] - $b[0];
+                                $dg = $a[1] - $b[1];
+                                $db = $a[2] - $b[2];
+                                return sqrt(($dr * $dr) + ($dg * $dg) + ($db * $db));
+                            };
+
+                            $displayHighlightColor = $highlightColor;
+                            $sourceRgb = $toRgb($highlightColor);
+                            $bestCanonical = '';
+                            $bestDistance = PHP_FLOAT_MAX;
+
+                            foreach ($canonicalMap as $canonical => $swatches) {
+                                foreach ($swatches as $swatch) {
+                                    $currentDistance = $distance($sourceRgb, $toRgb($swatch));
+                                    if ($currentDistance < $bestDistance) {
+                                        $bestDistance = $currentDistance;
+                                        $bestCanonical = $canonical;
+                                    }
+                                }
+                            }
+
+                            if ($bestCanonical !== '' && $bestDistance <= 145) {
+                                $displayHighlightColor = $bestCanonical;
+                            }
+
+                            $hex = ltrim($displayHighlightColor, '#');
+                            $r = hexdec(substr($hex, 0, 2));
+                            $g = hexdec(substr($hex, 2, 2));
+                            $b = hexdec(substr($hex, 4, 2));
+                            $softFill = sprintf('rgba(%d, %d, %d, 0.18)', $r, $g, $b);
+                            $softHover = sprintf('rgba(%d, %d, %d, 0.28)', $r, $g, $b);
+                            $softBorder = sprintf('rgba(%d, %d, %d, 0.62)', $r, $g, $b);
+
+                            $highlightStyle = ' style="--sheet-highlight: ' . htmlspecialchars($displayHighlightColor, ENT_QUOTES)
+                                . '; --sheet-highlight-soft: ' . htmlspecialchars($softFill, ENT_QUOTES)
+                                . '; --sheet-highlight-soft-hover: ' . htmlspecialchars($softHover, ENT_QUOTES)
+                                . '; --sheet-highlight-border: ' . htmlspecialchars($softBorder, ENT_QUOTES)
+                                . ';"';
+                            $highlightClass = ' sheet-highlight';
+                        }
+                        $cellStylesMap = json_decode((string) ($record['cell_styles'] ?? ''), true);
+                        if (!is_array($cellStylesMap)) {
+                            $cellStylesMap = [];
+                        }
+                        $cellStyleAttr = function (string $field) use ($cellStylesMap): string {
+                            $styleValue = $cellStylesMap[$field] ?? null;
+                            $bgColor = '';
+                            $textColor = '';
+
+                            if (is_array($styleValue)) {
+                                $bgColor = trim((string) ($styleValue['bg'] ?? ''));
+                                $textColor = trim((string) ($styleValue['text'] ?? ''));
+                            } else {
+                                $bgColor = trim((string) $styleValue);
+                            }
+
+                            $styles = [];
+                            if (preg_match('/^#?[0-9a-fA-F]{6}$/', $bgColor)) {
+                                if ($bgColor[0] !== '#') {
+                                    $bgColor = '#' . $bgColor;
+                                }
+                                $styles[] = 'background-color: ' . htmlspecialchars($bgColor, ENT_QUOTES) . ' !important';
+                            }
+
+                            if (preg_match('/^#?[0-9a-fA-F]{6}$/', $textColor)) {
+                                if ($textColor[0] !== '#') {
+                                    $textColor = '#' . $textColor;
+                                }
+                                $styles[] = 'color: ' . htmlspecialchars($textColor, ENT_QUOTES) . ' !important';
+                                $styles[] = 'font-weight: 600';
+                            }
+
+                            if (empty($styles)) {
+                                return '';
+                            }
+
+                            return ' style="' . implode('; ', $styles) . ';"';
+                        };
+                    ?>
+                    <tr data-record-id="<?php echo htmlspecialchars($record['id'] ?? ''); ?>" data-row-index="<?php echo $row_index; ?>" data-dataset="<?php echo htmlspecialchars($record['dataset_name'] ?? '', ENT_QUOTES); ?>" data-sold-to="<?php echo htmlspecialchars($display_sold_to, ENT_QUOTES); ?>" data-company-name="<?php echo htmlspecialchars((string) ($record['company_name'] ?? ''), ENT_QUOTES); ?>" data-created-at="<?php echo htmlspecialchars((string) ($record['created_at'] ?? '')); ?>" data-status="<?php echo htmlspecialchars($statusText); ?>" data-category="<?php echo htmlspecialchars(strtolower(trim((string) ($record['groupings'] ?? '')))); ?>" data-highlight-color="<?php echo htmlspecialchars($highlightColor, ENT_QUOTES); ?>" data-cell-styles="<?php echo htmlspecialchars((string) ($record['cell_styles'] ?? ''), ENT_QUOTES); ?>" class="<?php echo trim($hidden_class . ' ' . $andison_class . ' ' . $highlightClass . ' ' . ($is_new_record ? 'new-record' : '')); ?>"<?php echo $highlightStyle; ?>>
+                        <td<?php echo $cellStyleAttr('groupings'); ?>><?php echo htmlspecialchars($record['groupings'] ?? ''); ?></td>
+                        <td<?php echo $cellStyleAttr('invoice_no'); ?>><?php echo htmlspecialchars($record['invoice_no'] ?? ''); ?><?php if ($is_new_record): ?><span class="new-pill">NEW</span><?php endif; ?></td>
+                        <td<?php echo $cellStyleAttr('record_date'); ?>><?php echo htmlspecialchars($date_col); ?></td>
+                        <td<?php echo $cellStyleAttr('item_code'); ?>><?php echo htmlspecialchars($record['item_code'] ?? ''); ?></td>
+                        <td<?php echo $cellStyleAttr('item_name'); ?>><?php echo htmlspecialchars($record['item_name'] ?? ''); ?></td>
+                        <td<?php echo $cellStyleAttr('quantity'); ?>><?php echo (!empty($record['quantity']) && $record['quantity'] > 0) ? htmlspecialchars($record['quantity']) : ''; ?></td>
+                        <td<?php echo $cellStyleAttr('uom'); ?>><?php echo htmlspecialchars($record['uom'] ?? ''); ?></td>
+                        <td<?php echo $cellStyleAttr('serial_no'); ?>><?php echo htmlspecialchars($record['serial_no'] ?? ''); ?></td>
+                        <td<?php echo $cellStyleAttr('sold_to'); ?>><?php echo htmlspecialchars($display_sold_to); ?></td>
+                        <td<?php echo $cellStyleAttr('delivery_date'); ?>><?php echo htmlspecialchars($delivery_date); ?></td>
+                        <td<?php echo $cellStyleAttr('notes'); ?>><?php echo htmlspecialchars($record['notes'] ?? ''); ?></td>
                         <td class="action-cell">
                             <div class="action-buttons">
-                                <a href="#" class="view-btn" onclick="openModal(event, <?php echo intval($record['id'] ?? 0); ?>)">View</a>
-                                <a href="#" class="edit-btn" onclick="openEditModal(event, <?php echo intval($record['id'] ?? 0); ?>)" title="Edit Record"><i class="fas fa-edit"></i></a>
-                                <a href="#" class="delete-btn" onclick="deleteRecord(event, <?php echo intval($record['id'] ?? 0); ?>, '<?php echo htmlspecialchars($record['serial_no'] ?? ''); ?>')" title="Delete Record"><i class="fas fa-trash-alt"></i></a>
+                                <a href="#" class="view-btn" onclick="openModal(event, <?php echo (int)($record['id'] ?? 0); ?>)"><i class="fas fa-eye"></i> View</a>
+                                <a href="#" class="edit-btn" onclick="openEditModal(event, <?php echo (int)($record['id'] ?? 0); ?>)"><i class="fas fa-edit"></i> Edit</a>
+                                <a href="#" class="delete-btn" onclick="deleteRecord(event, <?php echo (int)($record['id'] ?? 0); ?>, '<?php echo htmlspecialchars((string)($record['item_code'] ?? ''), ENT_QUOTES); ?>')"><i class="fas fa-trash"></i> Delete</a>
                             </div>
                         </td>
                     </tr>
@@ -1417,8 +1856,8 @@ if (empty($allItems)) {
                     <i class="fas fa-chevron-down"></i> See More 
                     <span id="hiddenCount">(<?php echo count($delivery_records) - 30; ?> more records)</span>
                 </button>
-                <button class="load-more-btn" style="background: linear-gradient(135deg, #51cf66, #37a050);" onclick="showAllRows()">
-                    <i class="fas fa-list"></i> Show All
+                <button class="load-more-btn" style="background: linear-gradient(135deg, #51cf66, #37a050);" onclick="showLessRows()">
+                    <i class="fas fa-chevron-up"></i> Show Less
                 </button>
             </div>
             <?php endif; ?>
@@ -1546,8 +1985,29 @@ if (empty($allItems)) {
                     </div>
                     <div class="form-group">
                         <label for="add_groupings">Groupings</label>
-                        <input type="text" id="add_groupings" name="groupings" placeholder="e.g., A, B, C">
-                        <small class="input-hint">Category or batch grouping</small>
+                        <select id="add_groupings" name="groupings" required>
+                            <option value="">Select Grouping</option>
+                            <option value="1A" selected>1A</option>
+                            <option value="1B">1B</option>
+                            <option value="2A">2A</option>
+                            <option value="3A">3A</option>
+                            <option value="4A">4A</option>
+                        </select>
+                        <small class="input-hint">Allowed values: 1A, 1B, 2A, 3A, 4A</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="add_highlight_preset">Color Marker</label>
+                        <select id="add_highlight_preset" name="highlight_preset" onchange="toggleAddCustomColor()">
+                            <option value="">No Color Marker</option>
+                            <option value="#D8B4FE">Katay (Purple)</option>
+                            <option value="#FDE68A">Send to Andison (Yellow)</option>
+                            <option value="#FCA5A5">Warranty Replacement (Red)</option>
+                            <option value="#93C5FD">Warranty to Purchase (Blue)</option>
+                            <option value="#F9A8D4">Purchase to Warranty (Pink)</option>
+                            <option value="custom">Custom Color...</option>
+                        </select>
+                        <input type="color" id="add_highlight_color" value="#FDE68A" style="display:none; margin-top: 8px;">
+                        <small class="input-hint">Optional visual marker for this row</small>
                     </div>
                     <div class="form-group">
                         <label for="add_status">Status</label>
@@ -1795,8 +2255,29 @@ if (empty($allItems)) {
                     </div>
                     <div class="form-group">
                         <label for="edit_groupings">Groupings</label>
-                        <input type="text" id="edit_groupings" name="groupings" placeholder="e.g., A, B, C">
-                        <small class="input-hint">Category or batch grouping</small>
+                        <select id="edit_groupings" name="groupings" required>
+                            <option value="">Select Grouping</option>
+                            <option value="1A">1A</option>
+                            <option value="1B">1B</option>
+                            <option value="2A">2A</option>
+                            <option value="3A">3A</option>
+                            <option value="4A">4A</option>
+                        </select>
+                        <small class="input-hint">Allowed values: 1A, 1B, 2A, 3A, 4A</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_highlight_preset">Color Marker</label>
+                        <select id="edit_highlight_preset" name="highlight_preset" onchange="toggleEditCustomColor()">
+                            <option value="">No Color Marker</option>
+                            <option value="#D8B4FE">Katay (Purple)</option>
+                            <option value="#FDE68A">Send to Andison (Yellow)</option>
+                            <option value="#FCA5A5">Warranty Replacement (Red)</option>
+                            <option value="#93C5FD">Warranty to Purchase (Blue)</option>
+                            <option value="#F9A8D4">Purchase to Warranty (Pink)</option>
+                            <option value="custom">Custom Color...</option>
+                        </select>
+                        <input type="color" id="edit_highlight_color" value="#FDE68A" style="display:none; margin-top: 8px;">
+                        <small class="input-hint">Optional visual marker for this row</small>
                     </div>
                     <div class="form-group">
                         <label for="edit_status">Status</label>
@@ -1880,6 +2361,50 @@ if (empty($allItems)) {
         // Store all records for modal viewing
         let recordsData = <?php echo json_encode($delivery_records); ?>;
 
+        function parseCreatedAt(value) {
+            if (!value) return null;
+            const parsed = new Date(String(value).replace(' ', 'T'));
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+
+        function applyNewRecordHighlight(row, createdAtValue) {
+            if (!row) return;
+
+            const createdAt = parseCreatedAt(createdAtValue || row.getAttribute('data-created-at'));
+            if (!createdAt) return;
+
+            const elapsed = Date.now() - createdAt.getTime();
+            const remaining = 30000 - elapsed;
+
+            if (remaining <= 0) {
+                row.classList.remove('new-record');
+                row.querySelector('.new-pill')?.remove();
+                return;
+            }
+
+            row.classList.add('new-record');
+            if (!row.querySelector('.new-pill')) {
+                const firstCell = row.querySelector('td');
+                if (firstCell) {
+                    const pill = document.createElement('span');
+                    pill.className = 'new-pill';
+                    pill.textContent = 'NEW';
+                    firstCell.appendChild(pill);
+                }
+            }
+
+            window.setTimeout(() => {
+                row.classList.remove('new-record');
+                row.querySelector('.new-pill')?.remove();
+            }, remaining);
+        }
+
+        function initializeNewRecordHighlights() {
+            document.querySelectorAll('tbody tr[data-created-at]').forEach(row => {
+                applyNewRecordHighlight(row, row.getAttribute('data-created-at'));
+            });
+        }
+
         function formatNumber(value) {
             return Number(value || 0).toLocaleString();
         }
@@ -1897,6 +2422,13 @@ if (empty($allItems)) {
                 doRefresh();
             }
         }
+
+        initializeNewRecordHighlights();
+
+        // Pagination state must be initialized before any filter function runs.
+        let currentVisibleRows = 30;
+        const rowsPerLoad = 30;
+        let totalRecords = recordsData.length;
 
         function updateSummaryCards() {
             let totalDelivered = 0;
@@ -1944,7 +2476,7 @@ if (empty($allItems)) {
                 const emptyRow = document.createElement('tr');
                 emptyRow.setAttribute('data-empty-state', '1');
                 emptyRow.innerHTML = `
-                    <td colspan="19" style="text-align: center; padding: 40px; color: #a0a0a0;">
+                    <td colspan="12" style="text-align: center; padding: 40px; color: #a0a0a0;">
                         <i class="fas fa-inbox" style="font-size: 48px; margin-bottom: 15px; display: block;"></i>
                         No delivery records found. <a href="upload-data.php" style="color: #f4d03f;">Upload data</a> to get started.
                     </td>
@@ -1985,7 +2517,7 @@ if (empty($allItems)) {
                 if (currentlyVisible >= targetVisible) return;
                 if (row.classList.contains('hidden-row')) {
                     row.classList.remove('hidden-row');
-                    row.style.display = '';
+                    row.style.display = 'table-row';
                     currentlyVisible++;
                 }
             });
@@ -1996,13 +2528,36 @@ if (empty($allItems)) {
             if (!loadMoreContainer) return;
 
             const hiddenRows = document.querySelectorAll('table tbody tr.hidden-row').length;
+            const totalDataRows = Array.from(document.querySelectorAll('table tbody tr')).filter(row => !row.querySelector('td[colspan]')).length;
             const hiddenCountSpan = document.getElementById('hiddenCount');
+            const loadMoreBtn = document.getElementById('loadMoreBtn');
+            const showLessBtn = loadMoreContainer.querySelector('button[onclick="showLessRows()"]');
+            const canCollapse = totalDataRows > rowsPerLoad && currentVisibleRows > rowsPerLoad;
 
             if (hiddenRows > 0) {
                 loadMoreContainer.style.display = 'flex';
                 if (hiddenCountSpan) hiddenCountSpan.textContent = `(${hiddenRows} more records)`;
+                if (loadMoreBtn) loadMoreBtn.style.display = 'inline-flex';
+                if (showLessBtn) {
+                    if (canCollapse) {
+                        showLessBtn.style.display = 'inline-flex';
+                        showLessBtn.disabled = false;
+                        showLessBtn.innerHTML = '<i class="fas fa-chevron-up"></i> Show Less';
+                    } else {
+                        showLessBtn.style.display = 'none';
+                    }
+                }
             } else {
-                loadMoreContainer.innerHTML = '<p style="color: #51cf66; font-weight: 600;"><i class="fas fa-check-circle"></i> All records loaded</p>';
+                if (loadMoreBtn) loadMoreBtn.style.display = 'none';
+                if (showLessBtn) {
+                    if (canCollapse) {
+                        showLessBtn.style.display = 'inline-flex';
+                        showLessBtn.disabled = false;
+                        showLessBtn.innerHTML = '<i class="fas fa-chevron-up"></i> Show Less';
+                    } else {
+                        showLessBtn.style.display = 'none';
+                    }
+                }
             }
         }
         
@@ -2169,12 +2724,27 @@ if (empty($allItems)) {
             document.body.classList.add('modal-open');
             // Set default date to today
             document.getElementById('add_delivery_date').value = new Date().toISOString().split('T')[0];
+            document.getElementById('add_highlight_preset').value = '';
+            document.getElementById('add_highlight_color').style.display = 'none';
         }
 
         function closeAddModal() {
             document.getElementById('addRecordModal').classList.remove('show');
             document.body.classList.remove('modal-open');
             document.getElementById('addRecordForm').reset();
+            document.getElementById('add_highlight_color').style.display = 'none';
+        }
+
+        function toggleAddCustomColor() {
+            const preset = document.getElementById('add_highlight_preset').value;
+            const customInput = document.getElementById('add_highlight_color');
+            customInput.style.display = (preset === 'custom') ? 'block' : 'none';
+        }
+
+        function toggleEditCustomColor() {
+            const preset = document.getElementById('edit_highlight_preset').value;
+            const customInput = document.getElementById('edit_highlight_color');
+            customInput.style.display = (preset === 'custom') ? 'block' : 'none';
         }
 
         function submitAddRecord(event) {
@@ -2207,6 +2777,11 @@ if (empty($allItems)) {
                 sold_to_month: document.getElementById('add_sold_to_month').value,
                 sold_to_day: parseInt(document.getElementById('add_sold_to_day').value) || 0,
                 groupings: document.getElementById('add_groupings').value,
+                highlight_color: (() => {
+                    const preset = document.getElementById('add_highlight_preset').value;
+                    if (preset === 'custom') return document.getElementById('add_highlight_color').value || '';
+                    return preset || '';
+                })(),
                 notes: document.getElementById('add_notes').value,
                 status: document.getElementById('add_status').value,
                 dataset_name: '<?php echo isset($selected_dataset) ? htmlspecialchars($selected_dataset) : "all"; ?>'
@@ -2258,31 +2833,50 @@ if (empty($allItems)) {
                         
                         // Create new table row
                         const newRow = document.createElement('tr');
+                        const createdAtValue = newRecord.created_at || new Date().toISOString().slice(0, 19).replace('T', ' ');
+                        const rowStatus = String(newRecord.status || 'Delivered');
+                        const rowCategory = String(newRecord.groupings || '').trim().toLowerCase();
+                        const rowHighlightColor = String(newRecord.highlight_color || '').trim();
+                        const rowCompanyName = String(newRecord.company_name || '').trim();
+                        const rowCellStyles = (newRecord.cell_styles && typeof newRecord.cell_styles === 'object')
+                            ? JSON.stringify(newRecord.cell_styles)
+                            : String(newRecord.cell_styles || '');
+                        const rowTransferredTo = String(newRecord.transferred_to || '').trim();
+                        let rowSoldToDisplay = String(newRecord.sold_to || '').trim();
+                        if (!rowSoldToDisplay) {
+                            rowSoldToDisplay = rowCompanyName;
+                        }
+                        newRow.setAttribute('data-created-at', createdAtValue);
+                        newRow.setAttribute('data-status', rowStatus);
+                        newRow.setAttribute('data-category', rowCategory);
+                        newRow.setAttribute('data-highlight-color', rowHighlightColor);
+                        newRow.setAttribute('data-company-name', rowCompanyName);
+                        newRow.setAttribute('data-sold-to', rowSoldToDisplay);
+                        newRow.setAttribute('data-cell-styles', rowCellStyles);
+                        newRow.classList.add('new-record');
+                        if (/^#?[0-9a-fA-F]{6}$/.test(rowHighlightColor)) {
+                            const normalizedHighlight = rowHighlightColor.startsWith('#') ? rowHighlightColor : `#${rowHighlightColor}`;
+                            newRow.classList.add('sheet-highlight');
+                            applySheetHighlightVars(newRow, normalizedHighlight);
+                        }
                         newRow.style.animation = 'slideIn 0.3s ease';
                         newRow.innerHTML = `
-                            <td>${newRecord.invoice_no || ''}</td>
+                            <td>${newRecord.groupings || ''}</td>
+                            <td>${newRecord.invoice_no || ''}<span class="new-pill">NEW</span></td>
                             <td>${date_col}</td>
-                            <td>${newRecord.delivery_month || ''}</td>
-                            <td>${newRecord.delivery_day || ''}</td>
-                            <td>${newRecord.delivery_year || ''}</td>
                             <td>${newRecord.item_code || ''}</td>
                             <td>${newRecord.item_name || ''}</td>
                             <td style="text-align:center;">${newRecord.quantity || ''}</td>
-                            <td>${unit_price}</td>
                             <td>${newRecord.uom || ''}</td>
                             <td>${newRecord.serial_no || ''}</td>
-                            <td>${newRecord.company_name || ''}</td>
+                            <td>${rowSoldToDisplay}</td>
                             <td>${delivery_date}</td>
-                            <td>${newRecord.sold_to_month || ''}</td>
-                            <td>${newRecord.sold_to_day || ''}</td>
-                            <td>${newRecord.groupings || ''}</td>
                             <td>${newRecord.notes || ''}</td>
-                            <td><span class="badge ${badgeClass}">${status}</span></td>
-                            <td>
+                            <td class="action-cell">
                                 <div class="action-buttons">
-                                    <a href="#" class="view-btn" onclick="openModal(event, ${newRecord.id})" title="View Record"><i class="fas fa-eye"></i> View</a>
-                                    <a href="#" class="edit-btn" onclick="openEditModal(event, ${newRecord.id})" title="Edit Record"><i class="fas fa-edit"></i> Edit</a>
-                                    <a href="#" class="delete-btn" onclick="deleteRecord(event, ${newRecord.id}, '${newRecord.serial_no || ''}')" title="Delete Record"><i class="fas fa-trash-alt"></i> Delete</a>
+                                    <a href="#" class="view-btn" onclick="openModal(event, ${newRecord.id})"><i class="fas fa-eye"></i> View</a>
+                                    <a href="#" class="edit-btn" onclick="openEditModal(event, ${newRecord.id})"><i class="fas fa-edit"></i> Edit</a>
+                                    <a href="#" class="delete-btn" onclick="deleteRecord(event, ${newRecord.id}, '${String(newRecord.item_code || '').replace(/'/g, "\\'")}')"><i class="fas fa-trash"></i> Delete</a>
                                 </div>
                             </td>
                         `;
@@ -2296,6 +2890,7 @@ if (empty($allItems)) {
                             }
 
                             tableBody.insertBefore(newRow, tableBody.firstChild);
+                            applyNewRecordHighlight(newRow, createdAtValue);
                             
                             // Update load more logic: if we had 30 rows showing, the 31st becomes hidden now
                             const allRows = tableBody.querySelectorAll('tr:not([style*="display: none"])');
@@ -2371,6 +2966,23 @@ if (empty($allItems)) {
             document.getElementById('edit_notes').value = record.notes || '';
             document.getElementById('edit_groupings').value = record.groupings || '';
             document.getElementById('edit_status').value = record.status || 'Delivered';
+            {
+                const preset = document.getElementById('edit_highlight_preset');
+                const custom = document.getElementById('edit_highlight_color');
+                const colorValue = String(record.highlight_color || '').trim().toUpperCase();
+                const presetOptions = ['', '#D8B4FE', '#FDE68A', '#FCA5A5', '#93C5FD', '#F9A8D4'];
+                if (presetOptions.includes(colorValue)) {
+                    preset.value = colorValue;
+                    custom.style.display = 'none';
+                } else if (/^#?[0-9A-F]{6}$/.test(colorValue)) {
+                    preset.value = 'custom';
+                    custom.value = colorValue.startsWith('#') ? colorValue : `#${colorValue}`;
+                    custom.style.display = 'block';
+                } else {
+                    preset.value = '';
+                    custom.style.display = 'none';
+                }
+            }
             
             // Date fields
             if (record.delivery_date) {
@@ -2430,6 +3042,11 @@ if (empty($allItems)) {
                 sold_to_month: document.getElementById('edit_sold_to_month').value,
                 sold_to_day: document.getElementById('edit_sold_to_day').value,
                 groupings: document.getElementById('edit_groupings').value,
+                highlight_color: (() => {
+                    const preset = document.getElementById('edit_highlight_preset').value;
+                    if (preset === 'custom') return document.getElementById('edit_highlight_color').value || '';
+                    return preset || '';
+                })(),
                 notes: document.getElementById('edit_notes').value,
                 status: document.getElementById('edit_status').value
             };
@@ -2474,129 +3091,512 @@ if (empty($allItems)) {
             }
         });
 
-        // Hide Andison Manila rows on initial load ("All" is the default filter)
-        document.querySelectorAll('table tbody tr.andison-manila-row').forEach(row => {
-            row.style.display = 'none';
+        function normalizeSheetCategory(rawValue) {
+            let value = String(rawValue || '').toLowerCase();
+            value = value.replace(/--+>|->|=>|→/g, ' to ');
+            value = value.replace(/[()]/g, ' ');
+            value = value.replace(/\s+/g, ' ').trim();
+
+            if (value.includes('katay')) return 'katay';
+            if (value.includes('send to andison') || value.includes('send to andiso')) return 'send_to_andison';
+            if (value.includes('warranty replacemer') || value.includes('warranty replacement')) return 'warranty_replacement';
+            if (value.includes('warranty to purchase')) return 'warranty_to_purchase';
+            if (value.includes('purchase to warranty')) return 'purchase_to_warranty';
+
+            return value;
+        }
+
+        function normalizeHexColor(raw) {
+            if (!raw) return '';
+            let value = String(raw).trim();
+
+            const rgbMatch = value.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/i);
+            if (rgbMatch) {
+                const r = Number(rgbMatch[1]).toString(16).padStart(2, '0');
+                const g = Number(rgbMatch[2]).toString(16).padStart(2, '0');
+                const b = Number(rgbMatch[3]).toString(16).padStart(2, '0');
+                return `#${(r + g + b).toUpperCase()}`;
+            }
+
+            if (value.startsWith('#')) value = value.slice(1);
+            if (value.length === 8 && value.toUpperCase().startsWith('FF')) {
+                value = value.slice(2);
+            }
+            if (/^[0-9a-fA-F]{6}$/.test(value)) {
+                return `#${value.toUpperCase()}`;
+            }
+            return '';
+        }
+
+        function hexToRgb(hex) {
+            const normalized = normalizeHexColor(hex);
+            if (!normalized) return null;
+            return {
+                r: parseInt(normalized.slice(1, 3), 16),
+                g: parseInt(normalized.slice(3, 5), 16),
+                b: parseInt(normalized.slice(5, 7), 16)
+            };
+        }
+
+        function colorDistance(a, b) {
+            if (!a || !b) return Number.POSITIVE_INFINITY;
+            const dr = a.r - b.r;
+            const dg = a.g - b.g;
+            const db = a.b - b.b;
+            return Math.sqrt((dr * dr) + (dg * dg) + (db * db));
+        }
+
+        function applySheetHighlightVars(row, hexColor) {
+            if (!row) return;
+            const normalized = normalizeHexColor(hexColor);
+            if (!normalized) return;
+
+            const canonicalPalette = {
+                '#FACC15': ['#FACC15', '#FFF2CC', '#FFF59D', '#FDE68A', '#F4D03F', '#E8EC8C', '#E7EB89', '#E5EA83', '#E3E97D'],
+                '#14B8A6': ['#14B8A6', '#B7DEE8', '#A7E3DE', '#9DD9D2', '#4BACC6'],
+                '#EF4444': ['#EF4444', '#FF0000', '#DC2626', '#FFC7CE', '#F8CBAD', '#F4AAAA', '#C0504D'],
+                '#7C3AED': ['#7C3AED', '#D9B3D9', '#D7BDE2', '#CFA8D8', '#8064A2'],
+                '#EC4899': ['#EC4899', '#E79CC8', '#F4B6D7', '#F8C8DC', '#FF99CC']
+            };
+
+            let displayColor = normalized;
+            const source = hexToRgb(normalized);
+            if (source) {
+                let bestDistance = Number.POSITIVE_INFINITY;
+                let bestCanonical = '';
+
+                Object.entries(canonicalPalette).forEach(([canonical, shades]) => {
+                    shades.forEach(shade => {
+                        const shadeRgb = hexToRgb(shade);
+                        const dist = colorDistance(source, shadeRgb);
+                        if (dist < bestDistance) {
+                            bestDistance = dist;
+                            bestCanonical = canonical;
+                        }
+                    });
+                });
+
+                if (bestCanonical && bestDistance <= 145) {
+                    displayColor = bestCanonical;
+                }
+            }
+
+            const rgb = hexToRgb(displayColor);
+            if (!rgb || !normalized) return;
+
+            row.style.setProperty('--sheet-highlight', displayColor);
+            row.style.setProperty('--sheet-highlight-soft', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.18)`);
+            row.style.setProperty('--sheet-highlight-soft-hover', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.28)`);
+            row.style.setProperty('--sheet-highlight-border', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.62)`);
+        }
+
+        function getRowStyleColors(row) {
+            const colors = new Set();
+
+            const highlight = normalizeHexColor(row.getAttribute('data-highlight-color') || '');
+            if (highlight) colors.add(highlight);
+
+            try {
+                const rawCellStyles = row.getAttribute('data-cell-styles') || '';
+                if (rawCellStyles) {
+                    const parsed = JSON.parse(rawCellStyles);
+                    if (parsed && typeof parsed === 'object') {
+                        Object.values(parsed).forEach(value => {
+                            if (value && typeof value === 'object') {
+                                const bg = normalizeHexColor(value.bg || '');
+                                const text = normalizeHexColor(value.text || '');
+                                if (bg) colors.add(bg);
+                                if (text) colors.add(text);
+                                return;
+                            }
+
+                            const normalized = normalizeHexColor(value);
+                            if (normalized) colors.add(normalized);
+                        });
+                    }
+                }
+            } catch (e) {
+                // Ignore invalid JSON payloads; text/category fallback still applies.
+            }
+
+            return Array.from(colors);
+        }
+
+        function getRowTextColors(row) {
+            const colors = new Set();
+
+            try {
+                const rawCellStyles = row.getAttribute('data-cell-styles') || '';
+                if (rawCellStyles) {
+                    const parsed = JSON.parse(rawCellStyles);
+                    if (parsed && typeof parsed === 'object') {
+                        Object.values(parsed).forEach(value => {
+                            if (value && typeof value === 'object') {
+                                const text = normalizeHexColor(value.text || '');
+                                if (text) colors.add(text);
+                            }
+                        });
+                    }
+                }
+            } catch (e) {
+                // Ignore invalid JSON payloads.
+            }
+
+            row.querySelectorAll('td').forEach(cell => {
+                let textColor = normalizeHexColor(cell.style.color || '');
+                if (!textColor) {
+                    const styleAttr = cell.getAttribute('style') || '';
+                    const match = styleAttr.match(/color\s*:\s*([^;!]+)/i);
+                    if (match && match[1]) {
+                        textColor = normalizeHexColor(match[1]);
+                    }
+                }
+
+                if (textColor) {
+                    colors.add(textColor);
+                }
+            });
+
+            return Array.from(colors);
+        }
+
+        function rowHasCategoryColor(rowColors, filterValue) {
+            const palette = {
+                // Includes pale worksheet yellows from uploaded sheets.
+                yellow: ['#FACC15', '#FFF2CC', '#FFF59D', '#FDE68A', '#F4D03F', '#E8EC8C', '#E7EB89', '#E5EA83', '#E3E97D'],
+                teal: ['#14B8A6', '#B7DEE8', '#A7E3DE', '#9DD9D2', '#4BACC6'],
+                red: ['#FF0000', '#EF4444', '#DC2626', '#FFC7CE', '#F8CBAD', '#F4AAAA', '#C0504D'],
+                purple: ['#7C3AED', '#D9B3D9', '#D7BDE2', '#CFA8D8', '#8064A2'],
+                pink: ['#EC4899', '#E79CC8', '#F4B6D7', '#F8C8DC', '#FF99CC']
+            };
+
+            const thresholdByFilter = {
+                yellow: 105,
+                teal: 85,
+                red: 85,
+                purple: 85,
+                pink: 85
+            };
+
+            const targets = (palette[filterValue] || []).map(hexToRgb).filter(Boolean);
+            if (targets.length === 0) return false;
+
+            const threshold = thresholdByFilter[filterValue] || 85;
+
+            const isPaleYellow = (rgb) => {
+                if (!rgb) return false;
+                // Captures sheet-like pale yellow fills: high R/G, lower B, with green-yellow balance.
+                return rgb.r >= 205 && rgb.g >= 205 && rgb.b <= 170 && (rgb.r - rgb.b) >= 35 && (rgb.g - rgb.b) >= 30;
+            };
+
+            return rowColors.some(colorHex => {
+                const source = hexToRgb(colorHex);
+                if (!source) return false;
+                if (filterValue === 'yellow' && isPaleYellow(source)) {
+                    return true;
+                }
+                return targets.some(target => colorDistance(source, target) <= threshold);
+            });
+        }
+
+        function rowMatchesColorFilter(row, filterValue) {
+            const rowCategory = normalizeSheetCategory(row.getAttribute('data-category') || '');
+            const soldToText = String(row.getAttribute('data-sold-to') || '').toLowerCase();
+            const companyNameText = String(row.getAttribute('data-company-name') || '').toLowerCase();
+            const rowColors = getRowStyleColors(row);
+            const colorMatch = rowHasCategoryColor(rowColors, filterValue);
+            const rowTextColors = getRowTextColors(row);
+            const redTextMatch = rowHasCategoryColor(rowTextColors, 'red');
+
+            const cells = row.querySelectorAll('td');
+            const itemText = cells[3] ? cells[3].textContent.toLowerCase() : '';
+            const descriptionText = cells[4] ? cells[4].textContent.toLowerCase() : '';
+            const remarksText = cells[10] ? cells[10].textContent.toLowerCase() : '';
+            const combinedText = `${rowCategory} ${soldToText} ${companyNameText} ${itemText} ${descriptionText} ${remarksText}`;
+            const hasWarrantyToPurchaseMarker = rowCategory === 'warranty_to_purchase'
+                || combinedText.includes('warranty to purchase')
+                || combinedText.includes('swapping');
+
+            switch (filterValue) {
+                case 'purple':
+                    return colorMatch || rowCategory === 'katay' || combinedText.includes('katay');
+
+                case 'yellow':
+                    // Yellow-sheet grouping is commonly represented by Sold To = to Andison Manila.
+                    return colorMatch
+                        || soldToText.includes('andison')
+                        || companyNameText.includes('andison')
+                        || combinedText.includes('send to andison')
+                        || combinedText.includes('send to andiso');
+
+                case 'teal':
+                    // Match uploaded sheet color first for teal-coded swapping rows.
+                    // Use text/category fallback only when no color metadata exists.
+                    if (rowColors.length > 0) {
+                        return colorMatch;
+                    }
+                    return hasWarrantyToPurchaseMarker;
+
+                case 'red':
+                    // Strict red-text filter: only rows with red text style are included.
+                    return redTextMatch;
+
+                case 'pink':
+                    return colorMatch || rowCategory === 'purchase_to_warranty'
+                        || combinedText.includes('purchase to warranty')
+                        || /purchase\s+to\s+warranty/.test(combinedText);
+
+                default:
+                    return colorMatch || rowCategory === filterValue;
+            }
+        }
+
+        // Color picker filter system
+        const categoryColorMap = {
+            'yellow': '#facc15',
+            'teal': '#14b8a6',
+            'red': '#ef4444',
+            'purple': '#7c3aed',
+            'pink': '#ec4899',
+            '1a': '#9ca3af',
+            '1b': '#9ca3af',
+            '2a': '#9ca3af',
+            '3a': '#9ca3af',
+            '4a': '#9ca3af'
+        };
+
+        let availableCategoryFilters = [];
+        let selectedCategoryFilters = [];
+
+        function formatCategoryLabel(value) {
+            if (value === 'all') return 'All';
+            if (value === 'yellow') return 'Yellow';
+            if (value === 'teal') return 'Teal';
+            if (value === 'red') return 'Red';
+            if (value === 'purple') return 'Purple';
+            if (value === 'pink') return 'Pink';
+            if (['1a', '1b', '2a', '3a', '4a'].includes(value)) return String(value).toUpperCase();
+            return String(value || '').replace(/_/g, ' ');
+        }
+
+        function initializeColorPicker() {
+            const categories = ['yellow', 'teal', 'red', 'purple', 'pink', '1a', '1b', '2a', '3a', '4a'];
+            availableCategoryFilters = categories;
+            selectedCategoryFilters = Array.from(categories);
+
+            const container = document.getElementById('colorPickerContainer');
+            if (!container) return;
+
+            // Generate color picker HTML
+            let html = `
+                <button type="button" class="filter-option active" data-filter-value="all" onclick="toggleCategoryFilter('all')">
+                    <span class="color-circle" style="background: white; border-color: #51cf66;"><i class="fas fa-check" style="color: #51cf66; font-size: 15px;"></i></span>
+                    <span>${formatCategoryLabel('all')}</span>
+                </button>
+            `;
+
+            availableCategoryFilters.forEach(category => {
+                const color = categoryColorMap[category] || '#808080';
+                const label = formatCategoryLabel(category);
+                html += `
+                    <button type="button" class="filter-option active" data-filter-value="${category}" onclick="toggleCategoryFilter('${category}')">
+                        <span class="color-circle" style="background: ${color};"></span>
+                        <span>${label}</span>
+                    </button>
+                `;
+            });
+
+            container.innerHTML = html;
+            updateCategoryFilterSummary();
+            applyCategoryFilters();
+        }
+
+        function toggleCategoryFilterDropdown() {
+            const menu = document.getElementById('categoryFilterMenu');
+            const toggle = document.getElementById('categoryFilterToggle');
+            if (!menu || !toggle) return;
+
+            const willShow = !menu.classList.contains('show');
+            menu.classList.toggle('show', willShow);
+            toggle.classList.toggle('open', willShow);
+        }
+
+        function closeCategoryFilterDropdown() {
+            const menu = document.getElementById('categoryFilterMenu');
+            const toggle = document.getElementById('categoryFilterToggle');
+            if (!menu || !toggle) return;
+            menu.classList.remove('show');
+            toggle.classList.remove('open');
+        }
+
+        function updateCategoryOptionStyles() {
+            const allOption = document.querySelector('.filter-option[data-filter-value="all"]');
+            const isAll = selectedCategoryFilters.length === 0
+                || selectedCategoryFilters.length === availableCategoryFilters.length;
+
+            document.querySelectorAll('.filter-option[data-filter-value]').forEach(option => {
+                const value = option.getAttribute('data-filter-value');
+                if (value === 'all') {
+                    option.classList.toggle('active', isAll);
+                } else {
+                    option.classList.toggle('active', isAll || selectedCategoryFilters.includes(value));
+                }
+            });
+        }
+
+        function updateCategoryFilterSummary() {
+            const summary = document.getElementById('categoryFilterSummary');
+            if (!summary) return;
+
+            if (selectedCategoryFilters.length === 0 || selectedCategoryFilters.length === availableCategoryFilters.length) {
+                summary.textContent = 'All filters';
+                return;
+            }
+
+            if (selectedCategoryFilters.length === 1) {
+                summary.textContent = formatCategoryLabel(selectedCategoryFilters[0]);
+                return;
+            }
+
+            summary.textContent = `${selectedCategoryFilters.length} filters selected`;
+        }
+
+        function toggleCategoryFilter(filterValue) {
+            if (filterValue === 'all') {
+                selectedCategoryFilters = Array.from(availableCategoryFilters);
+                updateCategoryOptionStyles();
+                updateCategoryFilterSummary();
+                applyCategoryFilters();
+                return;
+            }
+
+            // If currently showing all, first click should focus on this one category only.
+            if (selectedCategoryFilters.length === availableCategoryFilters.length) {
+                selectedCategoryFilters = [filterValue];
+                updateCategoryOptionStyles();
+                updateCategoryFilterSummary();
+                applyCategoryFilters();
+                return;
+            }
+
+            const idx = selectedCategoryFilters.indexOf(filterValue);
+            if (idx >= 0) {
+                selectedCategoryFilters.splice(idx, 1);
+            } else {
+                selectedCategoryFilters.push(filterValue);
+            }
+
+            if (selectedCategoryFilters.length === 0) {
+                selectedCategoryFilters = Array.from(availableCategoryFilters);
+            }
+
+            updateCategoryOptionStyles();
+            updateCategoryFilterSummary();
+            applyCategoryFilters();
+        }
+
+        function selectAllCategoryFilters() {
+            selectedCategoryFilters = Array.from(availableCategoryFilters);
+            updateCategoryOptionStyles();
+            updateCategoryFilterSummary();
+            applyCategoryFilters();
+        }
+
+        function clearCategoryFilters() {
+            selectedCategoryFilters = [];
+            updateCategoryOptionStyles();
+            updateCategoryFilterSummary();
+            applyCategoryFilters();
+        }
+
+        function applyCategoryFilters() {
+            const tableRows = document.querySelectorAll('table tbody tr');
+            const loadMoreContainer = document.getElementById('loadMoreContainer');
+            const searchInput = document.getElementById('searchInput');
+            const query = (searchInput ? searchInput.value : '').toLowerCase().trim();
+
+            const showAll = selectedCategoryFilters.length === 0
+                || selectedCategoryFilters.length === availableCategoryFilters.length;
+            const hasSearch = query !== '';
+
+            // Show/hide rows based on filter
+            tableRows.forEach(row => {
+                // Skip rows with colspan (empty state)
+                if (row.querySelector('td[colspan]')) return;
+
+                let categoryMatched = false;
+                if (showAll) {
+                    categoryMatched = true;
+                } else {
+                    categoryMatched = selectedCategoryFilters.some(filterValue => rowMatchesColorFilter(row, filterValue));
+                }
+
+                const rowText = row.textContent.toLowerCase();
+                const searchMatched = !hasSearch || rowText.includes(query);
+                const matched = categoryMatched && searchMatched;
+
+                if (showAll && !hasSearch) {
+                    const rowIndex = parseInt(row.getAttribute('data-row-index') || '0', 10);
+                    const shouldShowByPage = rowIndex < currentVisibleRows;
+                    row.classList.remove('filtered-match');
+                    row.classList.toggle('hidden-row', !shouldShowByPage);
+                    row.style.display = shouldShowByPage ? 'table-row' : 'none';
+                } else {
+                    // While searching/filtering by category, ignore pagination and show exact matches only.
+                    row.classList.remove('hidden-row');
+                    if (matched) {
+                        row.classList.add('filtered-match');
+                        row.style.display = 'table-row';
+                    } else {
+                        row.classList.remove('filtered-match');
+                        row.style.display = 'none';
+                    }
+                }
+            });
+
+            // Hide pagination controls while filtering
+            if (loadMoreContainer) {
+                if (showAll && !hasSearch) {
+                    loadMoreContainer.style.display = 'flex';
+                    updateVisibleCount();
+                    updateLoadMoreState();
+                } else {
+                    loadMoreContainer.style.display = 'none';
+                }
+            }
+
+            updateSearchCount();
+        }
+
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('categoryFilterDropdown');
+            if (!dropdown) return;
+            if (!dropdown.contains(event.target)) {
+                closeCategoryFilterDropdown();
+            }
         });
 
-        // Filter functionality
-        const filterBtns = document.querySelectorAll('.filter-btn');
+        // Initialize color picker immediately
+        (function() {
+            initializeColorPicker();
+            updateCategoryOptionStyles();
+            updateCategoryFilterSummary();
+        })();
 
-        filterBtns.forEach(btn => {
-            btn.addEventListener('click', function() {
-                // Remove active class from all buttons
-                filterBtns.forEach(b => b.classList.remove('active'));
-                // Add active class to clicked button
-                this.classList.add('active');
-
-                const filterValue = this.textContent.trim().toLowerCase();
-                const tableRows = document.querySelectorAll('table tbody tr');
-                const soldToHeader = document.getElementById('soldToHeader');
-                const soldToMonthHeader = document.getElementById('soldToMonthHeader');
-                const soldToDayHeader = document.getElementById('soldToDayHeader');
-                const itemHeader = document.getElementById('itemHeader');
-
-                // Show/hide rows based on filter
-                tableRows.forEach(row => {
-                    // Skip rows with colspan (empty state)
-                    if (row.querySelector('td[colspan]')) return;
-                    
-                    if (filterValue === 'all') {
-                        row.style.display = row.classList.contains('hidden-row') ? 'none' : '';
-                    } else {
-                        // Check for badge if it exists
-                        const badge = row.querySelector('.badge');
-                        if (badge) {
-                            const badgeText = badge.textContent.trim().toLowerCase();
-                            if (badgeText === filterValue || badgeText.includes(filterValue)) {
-                                row.style.display = '';
-                            } else {
-                                row.style.display = 'none';
-                            }
-                        } else {
-                            // No badge, show all for "All" filter
-                            row.style.display = '';
-                        }
-                    }
-                });
-                
-                // Update header text based on filter
-                if (itemHeader) itemHeader.textContent = 'Item';
-                if (soldToMonthHeader) soldToMonthHeader.textContent = 'Sold To Month';
-                if (soldToDayHeader) soldToDayHeader.textContent = 'Sold To Day';
-                
-                // Clear search box when filter changes
-                document.getElementById('searchInput').value = '';
-                updateSearchCount();
-            });
+        // Fallback initialization on page load if needed
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                if (document.querySelectorAll('.color-circle').length === 0) {
+                    initializeColorPicker();
+                }
+            }, 100);
         });
 
         // Search functionality
         let searchActive = false;
         
         function searchTable() {
-            const searchInput = document.getElementById('searchInput');
-            const filter = searchInput.value.toLowerCase().trim();
-            const table = document.querySelector('table tbody');
-            const rows = table.querySelectorAll('tr');
-            
-            let visibleCount = 0;
-            
-            // When searching, show all rows first (remove hidden-row class temporarily)
-            if (filter !== '') {
-                searchActive = true;
-                rows.forEach(row => {
-                    row.classList.remove('hidden-row');
-                    row.style.display = '';
-                });
-            } else if (searchActive) {
-                // Search cleared - restore hidden rows
-                searchActive = false;
-                rows.forEach((row, index) => {
-                    if (row.querySelector('td[colspan]')) return;
-                    const rowIndex = parseInt(row.getAttribute('data-row-index') || index);
-                    if (rowIndex >= currentVisibleRows) {
-                        row.classList.add('hidden-row');
-                    }
-                    row.style.display = '';
-                });
-            }
-            
-            rows.forEach((row, index) => {
-                // Skip empty state row
-                if (row.querySelector('td[colspan]')) {
-                    return;
-                }
-                
-                const cells = row.querySelectorAll('td');
-                let found = false;
-                
-                cells.forEach(cell => {
-                    if (cell.textContent.toLowerCase().includes(filter)) {
-                        found = true;
-                    }
-                });
-                
-                if (filter === '') {
-                    // No filter - respect hidden-row class
-                    if (!row.classList.contains('hidden-row')) {
-                        visibleCount++;
-                    }
-                } else if (found) {
-                    row.style.display = '';
-                    visibleCount++;
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-            
-            updateSearchCount(visibleCount, filter);
-            
-            // Hide load more button when searching
-            const loadMoreContainer = document.getElementById('loadMoreContainer');
-            if (loadMoreContainer) {
-                loadMoreContainer.style.display = (filter !== '') ? 'none' : 'block';
-            }
+            applyCategoryFilters();
         }
 
         function updateSearchCount(count, filter) {
@@ -2620,10 +3620,6 @@ if (empty($allItems)) {
         }
 
         // Load More functionality
-        let currentVisibleRows = 30;
-        const rowsPerLoad = 30;
-        let totalRecords = recordsData.length;
-        
         function updateVisibleCount() {
             const visibleCountEl = document.getElementById('visibleRowCount');
             const totalRowCountEl = document.getElementById('totalRowCount');
@@ -2643,37 +3639,43 @@ if (empty($allItems)) {
             hiddenRows.forEach(row => {
                 if (shown < rowsPerLoad) {
                     row.classList.remove('hidden-row');
+                    row.style.display = 'table-row';
                     shown++;
                 }
             });
             
             currentVisibleRows += shown;
             updateVisibleCount();
-            
+
             // Update hidden count or hide button
             const remainingHidden = document.querySelectorAll('table tbody tr.hidden-row').length;
             const hiddenCountSpan = document.getElementById('hiddenCount');
-            const loadMoreContainer = document.getElementById('loadMoreContainer');
-            
-            if (remainingHidden === 0) {
-                loadMoreContainer.innerHTML = '<p style="color: #51cf66; font-weight: 600;"><i class="fas fa-check-circle"></i> All records loaded</p>';
-            } else {
+            if (remainingHidden > 0) {
                 hiddenCountSpan.textContent = `(${remainingHidden} more records)`;
             }
+
+            updateLoadMoreState();
         }
         
         function showAllRows() {
             const hiddenRows = document.querySelectorAll('table tbody tr.hidden-row');
             hiddenRows.forEach(row => {
                 row.classList.remove('hidden-row');
+                row.style.display = 'table-row';
             });
             
             currentVisibleRows = totalRecords;
             updateVisibleCount();
-            
-            const loadMoreContainer = document.getElementById('loadMoreContainer');
-            if (loadMoreContainer) {
-                loadMoreContainer.innerHTML = '<p style="color: #51cf66; font-weight: 600;"><i class="fas fa-check-circle"></i> All records loaded</p>';
+            updateLoadMoreState();
+        }
+
+        function showLessRows() {
+            currentVisibleRows = rowsPerLoad;
+            applyCategoryFilters();
+
+            const tableContainer = document.querySelector('.table-container');
+            if (tableContainer) {
+                tableContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         }
 

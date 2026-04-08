@@ -32,6 +32,17 @@ try {
     $sold_to_day = !empty($data['sold_to_day']) ? intval($data['sold_to_day']) : null;
     $notes = trim($data['notes'] ?? '');
     $groupings = trim($data['groupings'] ?? '');
+    $allowedGroupings = ['1A', '1B', '2A', '3A', '4A'];
+    if ($groupings !== '' && !in_array($groupings, $allowedGroupings, true)) {
+        $groupings = '';
+    }
+    $highlight_color = strtoupper(trim($data['highlight_color'] ?? ''));
+    if ($highlight_color !== '' && !preg_match('/^#?[0-9A-F]{6}$/', $highlight_color)) {
+        $highlight_color = '';
+    }
+    if ($highlight_color !== '' && $highlight_color[0] !== '#') {
+        $highlight_color = '#' . $highlight_color;
+    }
     
     // Main fields from form
     $invoice_no = trim($data['invoice_no'] ?? '');
@@ -81,6 +92,7 @@ try {
             quantity = ?, 
             unit_price = ?,
             status = ?, 
+            highlight_color = ?,
             notes = ?, 
             uom = ?, 
             sold_to_month = ?, 
@@ -95,7 +107,7 @@ try {
     }
 
     $stmt->bind_param(
-        'sssiissssssidssssisi',
+        'sssiissssssidsssssisi',
         $invoice_no,
         $serial_no,
         $delivery_month,
@@ -110,6 +122,7 @@ try {
         $quantity,
         $unit_price,
         $status,
+        $highlight_color,
         $notes,
         $uom,
         $sold_to_month,

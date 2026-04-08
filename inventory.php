@@ -160,6 +160,26 @@ $criticalItems = count(array_filter($items, fn($i) => $i['stock'] <= 5));
 $lowItems = count(array_filter($items, fn($i) => $i['stock'] > 5 && $i['stock'] <= 20));
 $highStock = count(array_filter($items, fn($i) => $i['stock'] > 100));
 $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
+
+// Product options for Create Purchase Order modal dropdowns
+$purchaseOrderProducts = [];
+$poItemsQuery = $conn->query(" 
+    SELECT DISTINCT item_code, item_name
+    FROM delivery_records
+    WHERE company_name = 'Stock Addition'
+      AND item_code IS NOT NULL AND item_code != ''
+      AND item_name IS NOT NULL AND item_name != ''
+      AND (box_code IS NULL OR box_code = '')
+    ORDER BY item_code ASC
+");
+if ($poItemsQuery) {
+    while ($row = $poItemsQuery->fetch_assoc()) {
+        $purchaseOrderProducts[] = [
+            'item_code' => trim((string) ($row['item_code'] ?? '')),
+            'item_name' => trim((string) ($row['item_name'] ?? '')),
+        ];
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1722,6 +1742,13 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                     </li>
 
                     <li class="menu-item">
+                        <a href="inquiry.php" class="menu-link">
+                            <i class="fas fa-file-invoice"></i>
+                            <span class="menu-label">Inquiry</span>
+                        </a>
+                    </li>
+
+                    <li class="menu-item">
                         <a href="delivery-records.php" class="menu-link">
                             <i class="fas fa-truck"></i>
                             <span class="menu-label">Delivery Records</span>
@@ -2090,9 +2117,6 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                             <td style="text-align: center; white-space: nowrap;">
                                 <button class="action-btn action-view action-btn-horizontal" title="View" onclick="viewItemDetails('<?php echo htmlspecialchars($item['code']); ?>', '<?php echo htmlspecialchars($item['name']); ?>', <?php echo $item['stock']; ?>)">
                                     <i class="fas fa-eye"></i>
-                                </button>
-                                <button class="action-btn action-add action-btn-horizontal" title="Edit Stock" onclick="openEditStockModal('<?php echo htmlspecialchars($item['code']); ?>', '<?php echo htmlspecialchars($item['name']); ?>', <?php echo $item['stock']; ?>)">
-                                    <i class="fas fa-edit"></i>
                                 </button>
                                 <button class="action-btn action-delete action-btn-horizontal" title="Delete" onclick="confirmDeleteItem('<?php echo htmlspecialchars($item['code']); ?>', '<?php echo htmlspecialchars($item['name']); ?>')">
                                     <i class="fas fa-trash"></i>
@@ -3208,7 +3232,7 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                                 line-height: 1.6;
                             ">
                                 <i class="fas fa-info-circle" style="margin-right: 8px; color: #17a2b8;"></i>
-                                Use the <strong>Edit</strong> button to modify item details, <strong>Add</strong> to increase stock, and <strong>Remove</strong> to decrease stock.
+                                Use <strong>Add</strong> to increase stock, <strong>Remove</strong> to decrease stock, and <strong>Delete</strong> to remove an item.
                             </div>
                         </div>
                         
@@ -4259,10 +4283,140 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
         const closeCreateBtn = document.getElementById('closeCreateBtn');
         const createOrderForm = document.getElementById('createOrderForm');
         const saveOrderBtn = document.getElementById('saveOrderBtn');
+        const purchaseOrderProducts = <?php echo json_encode($purchaseOrderProducts, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+        let productRowCounter = 0;
+        const productsByCode = new Map();
+        const productsByName = new Map();
+        purchaseOrderProducts.forEach(item => {
+            const code = String(item.item_code || '').trim();
+            const name = String(item.item_name || '').trim();
+            if (code !== '' && name !== '') {
+                productsByCode.set(code, name);
+                if (!productsByName.has(name)) {
+                    productsByName.set(name, code);
+                }
+            }
+        });
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function buildCodeOptionsHtml() {
+            let options = '';
+            purchaseOrderProducts.forEach(item => {
+                options += `<option value="${escapeHtml(item.item_code)}" data-name="${escapeHtml(item.item_name)}">${escapeHtml(item.item_code)}</option>`;
+            });
+            return options;
+        }
+
+        function buildNameOptionsHtml() {
+            let options = '';
+            purchaseOrderProducts.forEach(item => {
+                options += `<option value="${escapeHtml(item.item_name)}" data-code="${escapeHtml(item.item_code)}">${escapeHtml(item.item_name)}</option>`;
+            });
+            return options;
+        }
+
+        function clearProductValidity(row) {
+            const codeInput = row.querySelector('.po-product-code');
+            const nameInput = row.querySelector('.po-product-name');
+            if (codeInput) codeInput.setCustomValidity('');
+            if (nameInput) nameInput.setCustomValidity('');
+        }
+
+        function syncProductFromCodeInput(codeInput) {
+            const row = codeInput.closest('.product-row');
+            if (!row) return;
+            const nameInput = row.querySelector('.po-product-name');
+            if (!nameInput) return;
+            clearProductValidity(row);
+
+            const itemCode = String(codeInput.value || '').trim();
+            if (itemCode === '') {
+                nameInput.value = '';
+                return;
+            }
+
+            if (productsByCode.has(itemCode)) {
+                nameInput.value = productsByCode.get(itemCode) || '';
+                return;
+            }
+
+            codeInput.setCustomValidity('Select a valid Product Code from the list.');
+        }
+
+        function syncProductFromNameInput(nameInput) {
+            const row = nameInput.closest('.product-row');
+            if (!row) return;
+            const codeInput = row.querySelector('.po-product-code');
+            if (!codeInput) return;
+            clearProductValidity(row);
+
+            const itemName = String(nameInput.value || '').trim();
+            if (itemName === '') {
+                codeInput.value = '';
+                return;
+            }
+
+            if (productsByName.has(itemName)) {
+                codeInput.value = productsByName.get(itemName) || '';
+                return;
+            }
+
+            nameInput.setCustomValidity('Select a valid Product Name from the list.');
+        }
+
+        function validateProductRows() {
+            const rows = document.querySelectorAll('#products-container .product-row');
+            let isValid = true;
+
+            rows.forEach(row => {
+                const codeInput = row.querySelector('.po-product-code');
+                const nameInput = row.querySelector('.po-product-name');
+                if (!codeInput || !nameInput) return;
+
+                clearProductValidity(row);
+
+                const itemCode = String(codeInput.value || '').trim();
+                const itemName = String(nameInput.value || '').trim();
+
+                if (itemCode === '' || itemName === '') {
+                    return;
+                }
+
+                if (!productsByCode.has(itemCode)) {
+                    codeInput.setCustomValidity('Select a valid Product Code from the list.');
+                    isValid = false;
+                    return;
+                }
+
+                if (!productsByName.has(itemName)) {
+                    nameInput.setCustomValidity('Select a valid Product Name from the list.');
+                    isValid = false;
+                    return;
+                }
+
+                const expectedName = productsByCode.get(itemCode) || '';
+                if (expectedName !== itemName) {
+                    nameInput.setCustomValidity('Product Name must match the selected Product Code.');
+                    isValid = false;
+                }
+            });
+
+            return isValid;
+        }
 
         function addProductRow() {
             const container = document.getElementById('products-container');
-            const rowIndex = container.children.length;
+            const rowIndex = productRowCounter++;
+            const codeListId = `po-code-list-${rowIndex}`;
+            const nameListId = `po-name-list-${rowIndex}`;
             
             const productRow = document.createElement('div');
             productRow.className = 'product-row';
@@ -4279,11 +4433,17 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
             productRow.innerHTML = `
                 <div class="form-group" style="margin-bottom: 0;">
                     <label style="font-size: 12px; color: #aaa; margin-bottom: 4px; display: block;">Product Code</label>
-                    <input type="text" name="products[${rowIndex}][item_code]" placeholder="Code" required style="padding: 10px; border-radius: 6px; border: 1px solid rgba(244,208,63,0.25); background: rgba(30,42,56,0.6); color: #fff; font-size: 13px;">
+                    <input class="po-product-code" type="text" name="products[${rowIndex}][item_code]" list="${codeListId}" placeholder="Code" required oninput="syncProductFromCodeInput(this)" onchange="syncProductFromCodeInput(this)" style="padding: 10px; border-radius: 6px; border: 1px solid rgba(244,208,63,0.25); background: rgba(30,42,56,0.6); color: #fff; font-size: 13px;">
+                    <datalist id="${codeListId}">
+                        ${buildCodeOptionsHtml()}
+                    </datalist>
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                     <label style="font-size: 12px; color: #aaa; margin-bottom: 4px; display: block;">Product Name</label>
-                    <input type="text" name="products[${rowIndex}][item_name]" placeholder="Name" required style="padding: 10px; border-radius: 6px; border: 1px solid rgba(244,208,63,0.25); background: rgba(30,42,56,0.6); color: #fff; font-size: 13px;">
+                    <input class="po-product-name" type="text" name="products[${rowIndex}][item_name]" list="${nameListId}" placeholder="Name" required oninput="syncProductFromNameInput(this)" onchange="syncProductFromNameInput(this)" style="padding: 10px; border-radius: 6px; border: 1px solid rgba(244,208,63,0.25); background: rgba(30,42,56,0.6); color: #fff; font-size: 13px;">
+                    <datalist id="${nameListId}">
+                        ${buildNameOptionsHtml()}
+                    </datalist>
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                     <label style="font-size: 12px; color: #aaa; margin-bottom: 4px; display: block;">Qty</label>
@@ -4361,9 +4521,11 @@ $avgStock = $totalItems > 0 ? intval($totalStock / $totalItems) : 0;
                 saveOrderBtn.classList.add('action-btn');
                 saveOrderBtn.addEventListener('click', function(e) {
                     e.preventDefault();
-                    if (createOrderForm.checkValidity() === false) {
+                    const rowsAreValid = validateProductRows();
+                    if (!rowsAreValid || createOrderForm.checkValidity() === false) {
                         e.stopPropagation();
                         createOrderForm.classList.add('was-validated');
+                        createOrderForm.reportValidity();
                     } else {
                         createOrderForm.submit();
                     }

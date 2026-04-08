@@ -18,19 +18,29 @@ if (!isset($_GET['company'])) {
 
 $companyName = $conn->real_escape_string($_GET['company']);
 
+function clientCompanyExpr(): string {
+    return "NULLIF(TRIM(CASE
+                WHEN sold_to IS NOT NULL AND sold_to != '' THEN sold_to
+                WHEN company_name IS NOT NULL AND company_name != '' AND company_name NOT IN ('Stock Addition', 'Orders', 'Delivery Records') THEN company_name
+                ELSE ''
+            END), '')";
+}
+
+$clientCompanyExpr = clientCompanyExpr();
+
 try {
     // Get company summary
     $summaryResult = $conn->query("
         SELECT 
-            company_name,
+            $clientCompanyExpr as company_name,
             COUNT(*) as total_orders,
             SUM(quantity) as total_units,
             COUNT(DISTINCT item_code) as unique_products,
             MIN(delivery_date) as first_delivery,
             MAX(delivery_date) as last_delivery
         FROM delivery_records 
-        WHERE company_name = '$companyName'
-        GROUP BY company_name
+        WHERE $clientCompanyExpr = '$companyName'
+        GROUP BY $clientCompanyExpr
     ");
     
     $summary = $summaryResult->fetch_assoc();
@@ -49,7 +59,7 @@ try {
             COUNT(*) as order_count,
             MAX(delivery_date) as last_ordered
         FROM delivery_records 
-        WHERE company_name = '$companyName'
+        WHERE $clientCompanyExpr = '$companyName'
         GROUP BY item_code
         ORDER BY total_qty DESC
     ");
@@ -67,7 +77,7 @@ try {
             quantity as qty,
             groupings
         FROM delivery_records 
-        WHERE company_name = '$companyName'
+        WHERE $clientCompanyExpr = '$companyName'
         ORDER BY delivery_date DESC
         LIMIT 10
     ");
@@ -84,7 +94,7 @@ try {
             SUM(quantity) as units,
             COUNT(*) as orders
         FROM delivery_records 
-        WHERE company_name = '$companyName' AND delivery_year > 0
+        WHERE $clientCompanyExpr = '$companyName' AND delivery_year > 0
         GROUP BY delivery_year
         ORDER BY year DESC
     ");
@@ -100,7 +110,7 @@ try {
             delivery_year || '-' || delivery_month as month,
             SUM(quantity) as units
         FROM delivery_records 
-        WHERE company_name = '$companyName'
+        WHERE $clientCompanyExpr = '$companyName'
         GROUP BY delivery_year, delivery_month
         ORDER BY delivery_year DESC, delivery_month DESC
         LIMIT 12

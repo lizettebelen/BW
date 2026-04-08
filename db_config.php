@@ -47,12 +47,16 @@ try {
         delivery_month VARCHAR(20),
         delivery_day   INTEGER,
         delivery_year  INTEGER      NOT NULL DEFAULT 0,
+        record_date    DATE,
         delivery_date  DATE,
         item_code      VARCHAR(50)  NOT NULL,
         item_name      VARCHAR(255),
         company_name   VARCHAR(255),
+        sold_to        VARCHAR(255),
         quantity       INTEGER      NOT NULL DEFAULT 0,
         status         VARCHAR(50)  NOT NULL DEFAULT 'Delivered',
+        highlight_color VARCHAR(20),
+        cell_styles    TEXT,
         notes          TEXT,
         created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
         updated_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
@@ -62,9 +66,13 @@ try {
     @$conn->query("ALTER TABLE delivery_records ADD COLUMN invoice_no VARCHAR(50)");
     @$conn->query("ALTER TABLE delivery_records ADD COLUMN serial_no VARCHAR(100)");
     @$conn->query("ALTER TABLE delivery_records ADD COLUMN delivery_year INTEGER NOT NULL DEFAULT 0");
+    @$conn->query("ALTER TABLE delivery_records ADD COLUMN record_date DATE");
     @$conn->query("ALTER TABLE delivery_records ADD COLUMN delivery_date DATE");
+    @$conn->query("ALTER TABLE delivery_records ADD COLUMN highlight_color VARCHAR(20)");
+    @$conn->query("ALTER TABLE delivery_records ADD COLUMN cell_styles TEXT");
     @$conn->query("ALTER TABLE delivery_records ADD COLUMN groupings VARCHAR(50)");
     @$conn->query("ALTER TABLE delivery_records ADD COLUMN uom VARCHAR(50)");
+    @$conn->query("ALTER TABLE delivery_records ADD COLUMN sold_to VARCHAR(255)");
     @$conn->query("ALTER TABLE delivery_records ADD COLUMN sold_to_month VARCHAR(20)");
     @$conn->query("ALTER TABLE delivery_records ADD COLUMN sold_to_day INTEGER");
     @$conn->query("ALTER TABLE delivery_records ADD COLUMN box_code VARCHAR(50)");
@@ -86,6 +94,7 @@ function safeSchemaUpgrade($conn, $sql) {
 }
 
 safeSchemaUpgrade($conn, "ALTER TABLE delivery_records ADD COLUMN order_customer VARCHAR(255)");
+safeSchemaUpgrade($conn, "ALTER TABLE delivery_records ADD COLUMN sold_to VARCHAR(255)");
 safeSchemaUpgrade($conn, "ALTER TABLE delivery_records ADD COLUMN order_date DATE");
 safeSchemaUpgrade($conn, "ALTER TABLE delivery_records ADD COLUMN unit_price DECIMAL(12,2) DEFAULT 0");
 safeSchemaUpgrade($conn, "ALTER TABLE delivery_records ADD COLUMN total_amount DECIMAL(12,2) DEFAULT 0");
