@@ -1165,6 +1165,14 @@ if ($conn) {
                     </a>
                 </li>
 
+                <!-- Warranty Replacements -->
+                <li class="menu-item">
+                    <a href="warranty-replacements.php" class="menu-link">
+                        <i class="fas fa-wrench"></i>
+                        <span class="menu-label">Warranty Items</span>
+                    </a>
+                </li>
+
                 <!-- Settings -->
                 <li class="menu-item">
                     <a href="settings.php" class="menu-link">
@@ -1599,6 +1607,8 @@ if ($conn) {
         let pendingDeleteDatasets = [];
         let dotAnimationInterval = null;
         let loaderStartTime = null;
+        let warrantyRowsMap = {}; // Map of filename -> array of warranty row indices
+        let extractedCellStylesMap = {}; // Map of file::sheet -> extracted style maps from backend
         const LOADER_MIN_DISPLAY_TIME = 3000; // 3 seconds in milliseconds
 
         // Initialize database on page load
@@ -1715,6 +1725,8 @@ if ($conn) {
             
             allParsedData = [];
             workbookSheets = {};
+            warrantyRowsMap = {};
+            extractedCellStylesMap = {};
             
             // Check if any file has multiple sheets
             let hasMultiSheetFile = false;
@@ -1740,6 +1752,15 @@ if ($conn) {
                             data: result.data,
                             rowCount: result.data.length
                         });
+                    }
+                    
+                    // Detect warranty rows (rows with red text)
+                    try {
+                        await detectAndStoreWarrantyRows(file);
+                    } catch (err) {
+                        console.warn(`Warning: Could not detect warranty rows for ${file.name}: ${err.message}`);
+                        // Continue anyway - warranty detection is optional
+                        warrantyRowsMap[file.name] = [];
                     }
                 } catch (error) {
                     showAlert('error', `Error parsing ${file.name}: ${error.message}`);
@@ -1992,6 +2013,143 @@ if ($conn) {
             return rows;
         }
 
+        /**
+         * Detect warranty rows (rows with red text color) using the backend API
+         */
+        async function detectAndStoreWarrantyRows(file) {
+            return detectAndStoreWarrantyRowsForSheet(file, '');
+        }
+
+        async function detectAndStoreWarrantyRowsForSheet(file, sheetName = '') {
+            const cacheKey = `${file.name}::${sheetName || '__active__'}`;
+            if (Array.isArray(warrantyRowsMap[cacheKey])) {
+                return warrantyRowsMap[cacheKey];
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            if (sheetName) {
+                formData.append('sheet_name', sheetName);
+            }
+
+            const response = await fetch('api/detect-warranty-rows.php', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                warrantyRowsMap[cacheKey] = result.warranty_rows || [];
+                // Backward-compatible key for older flows.
+                if (!sheetName) {
+                    warrantyRowsMap[file.name] = result.warranty_rows || [];
+                }
+                console.log(`✅ Warranty rows detected for ${file.name}${sheetName ? ' [' + sheetName + ']' : ''}:`, result.warranty_rows);
+            } else {
+                console.warn(`⚠️  Warranty detection failed for ${file.name}${sheetName ? ' [' + sheetName + ']' : ''}: ${result.message}`);
+                warrantyRowsMap[cacheKey] = [];
+                if (!sheetName) {
+                    warrantyRowsMap[file.name] = [];
+                }
+            }
+
+            return warrantyRowsMap[cacheKey] || [];
+        }
+
+        async function detectAndStoreCellStylesForSheet(file, sheetName = '') {
+            const cacheKey = `${file.name}::${sheetName || '__active__'}`;
+            if (extractedCellStylesMap[cacheKey]) {
+                return extractedCellStylesMap[cacheKey];
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            if (sheetName) {
+                formData.append('sheet_name', sheetName);
+            }
+
+            const response = await fetch('api/detect-cell-styles.php', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (result && result.success) {
+                extractedCellStylesMap[cacheKey] = {
+                    row_cell_styles: result.row_cell_styles || {},
+                    row_highlights: result.row_highlights || {}
+                };
+            } else {
+                extractedCellStylesMap[cacheKey] = {
+                    row_cell_styles: {},
+                    row_highlights: {}
+                };
+            }
+
+            return extractedCellStylesMap[cacheKey];
+        }
+
+        function applyDetectedStylesToRows(rows, detectedStyleData) {
+            if (!Array.isArray(rows) || !detectedStyleData || typeof detectedStyleData !== 'object') {
+                return rows;
+            }
+
+            const rowCellStyles = detectedStyleData.row_cell_styles || {};
+            const rowHighlights = detectedStyleData.row_highlights || {};
+
+            rows.forEach((row, idx) => {
+                const idxKey = String(idx);
+                const styleEntry = rowCellStyles[idxKey];
+                const rowHighlight = rowHighlights[idxKey];
+
+                if (styleEntry && typeof styleEntry === 'object') {
+                    const existingStyles = (row && typeof row.cell_styles === 'object' && row.cell_styles !== null)
+                        ? row.cell_styles
+                        : {};
+                    row.cell_styles = { ...existingStyles, ...styleEntry };
+                }
+
+                if ((!row.highlight_color || String(row.highlight_color).trim() === '') && rowHighlight) {
+                    row.highlight_color = rowHighlight;
+                }
+            });
+
+            return rows;
+        }
+
+        function isRedLikeColor(color) {
+            if (!color) return false;
+            let value = String(color).trim().toUpperCase();
+            if (!value) return false;
+            if (value.startsWith('#')) value = value.slice(1);
+            if (value.length === 8 && value.startsWith('FF')) value = value.slice(2);
+
+            const redPatterns = ['FF0000', 'C00000', 'E74C3C', 'D32F2F', '960000'];
+            return redPatterns.includes(value);
+        }
+
+        function detectWarrantyRowsFromParsedData(rows) {
+            const indices = [];
+            if (!Array.isArray(rows)) return indices;
+
+            rows.forEach((row, idx) => {
+                const styles = row && typeof row === 'object' ? row.cell_styles : null;
+                if (!styles || typeof styles !== 'object') return;
+
+                const hasRed = Object.values(styles).some((styleEntry) => {
+                    if (!styleEntry || typeof styleEntry !== 'object') return false;
+                    return isRedLikeColor(styleEntry.text) || isRedLikeColor(styleEntry.bg);
+                });
+
+                if (hasRed) {
+                    indices.push(idx);
+                }
+            });
+
+            return indices;
+        }
+
         function showSheetSelector(fileName, sheets) {
             sheetSelector.style.display = 'block';
             const sheetNames = Object.keys(sheets);
@@ -2185,6 +2343,7 @@ if ($conn) {
                 const fileName = checkbox.dataset.file;
                 const itemType = checkbox.dataset.type;
                 const fileIdx = parseInt(checkbox.dataset.idx);
+                let sheetName = '';
                 
                 // Get the custom dataset name from the input field
                 const itemDiv = checkbox.closest('.sheet-item');
@@ -2197,7 +2356,7 @@ if ($conn) {
                     const fileInfo = allFilesInfoStore[fileIdx];
                     rows = fileInfo.data;
                 } else {
-                    const sheetName = checkbox.dataset.sheet;
+                    sheetName = checkbox.dataset.sheet;
                     if (workbookSheets[fileName] && workbookSheets[fileName][sheetName]) {
                         rows = parseWorksheet(workbookSheets[fileName][sheetName].worksheet);
                     }
@@ -2211,6 +2370,20 @@ if ($conn) {
                 showAlert('info', `Importing ${i + 1} of ${checkedBoxes.length} as "${datasetName}"...`);
 
                 try {
+                    const sourceFile = selectedFiles.find(f => f.name === fileName);
+                    const extractedStyles = sourceFile
+                        ? await detectAndStoreCellStylesForSheet(sourceFile, sheetName)
+                        : null;
+                    rows = applyDetectedStylesToRows(rows, extractedStyles);
+
+                    const apiWarrantyRows = sourceFile
+                        ? await detectAndStoreWarrantyRowsForSheet(sourceFile, sheetName)
+                        : (warrantyRowsMap[`${fileName}::${sheetName || '__active__'}`] || warrantyRowsMap[fileName] || []);
+
+                    // Warranty rows from backend detection, with frontend style-based fallback.
+                    const localWarrantyRows = detectWarrantyRowsFromParsedData(rows);
+                    const warranty_rows = Array.from(new Set([...(apiWarrantyRows || []), ...(localWarrantyRows || [])]));
+
                     const response = await fetch('api/import-data.php', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -2218,6 +2391,7 @@ if ($conn) {
                             data: rows,
                             fileName: fileName,
                             dataset_name: datasetName,
+                            warranty_rows: warranty_rows,
                             timestamp: new Date().toISOString()
                         })
                     });
@@ -2314,6 +2488,20 @@ if ($conn) {
                 }
 
                 try {
+                    const sourceFile = selectedFiles.find(f => f.name === fileName);
+                    const extractedStyles = sourceFile
+                        ? await detectAndStoreCellStylesForSheet(sourceFile, sheetName)
+                        : null;
+                    rows = applyDetectedStylesToRows(rows, extractedStyles);
+
+                    const apiWarrantyRows = sourceFile
+                        ? await detectAndStoreWarrantyRowsForSheet(sourceFile, sheetName)
+                        : (warrantyRowsMap[`${fileName}::${sheetName || '__active__'}`] || warrantyRowsMap[fileName] || []);
+
+                    // Warranty rows from backend detection, with frontend style-based fallback.
+                    const localWarrantyRows = detectWarrantyRowsFromParsedData(rows);
+                    const warranty_rows = Array.from(new Set([...(apiWarrantyRows || []), ...(localWarrantyRows || [])]));
+
                     const response = await fetch('api/import-data.php', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -2321,6 +2509,7 @@ if ($conn) {
                             data: rows,
                             fileName: sheetName,
                             dataset_name: datasetName,
+                            warranty_rows: warranty_rows,
                             timestamp: new Date().toISOString()
                         })
                     });
@@ -2651,12 +2840,24 @@ if ($conn) {
                 } catch (e) { /* use default data1 */ }
             }
 
+            // Enrich parsed rows with backend-extracted per-cell styles when possible.
+            try {
+                const sourceFile = selectedFiles.length > 0 ? selectedFiles[0] : null;
+                if (sourceFile) {
+                    const extractedStyles = await detectAndStoreCellStylesForSheet(sourceFile, '');
+                    parsedData = applyDetectedStylesToRows(parsedData, extractedStyles);
+                }
+            } catch (e) {
+                console.warn('Style extraction fallback failed:', e.message);
+            }
+
             // Prepare data for import
             const fileNames = selectedFiles.map(f => f.name).join(', ');
             const importData = {
                 data: parsedData,
                 fileName: fileNames,
                 dataset_name: datasetName,
+                warranty_rows: detectWarrantyRowsFromParsedData(parsedData),
                 merge_choice: shouldMerge ? 'merge' : 'separate',
                 timestamp: new Date().toISOString()
             };
@@ -2970,14 +3171,16 @@ if ($conn) {
                     
                     data.datasets.forEach((dataset, index) => {
                         const datasetId = 'dataset_' + index;
+                        const datasetName = dataset.name || '';
+                        const datasetLabel = dataset.label || datasetName;
                         const recordCount = dataset.count || dataset.record_count || 0;
-                        const isDefault = dataset.is_merged || dataset.is_default || dataset.name === 'ALL_DATA';
+                        const isDefault = dataset.is_merged || dataset.is_default || datasetName === 'ALL_DATA';
                         
                         html += `
                             <label style="display:flex; align-items:center; gap:12px; padding:12px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; cursor:pointer; transition:all 0.2s; background:rgba(255,255,255,0.02);" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='rgba(255,255,255,0.02)'">
-                                <input type="checkbox" id="${datasetId}" value="${dataset.name}" data-count="${recordCount}" style="width:18px; height:18px; cursor:pointer;">
+                                <input type="checkbox" id="${datasetId}" value="${datasetName}" data-count="${recordCount}" style="width:18px; height:18px; cursor:pointer;">
                                 <div style="flex:1; text-align:left;">
-                                    <div style="color:#fff; font-weight:600;">${dataset.name}</div>
+                                    <div style="color:#fff; font-weight:600;">${datasetLabel}</div>
                                     <div style="color:#fff; font-size:12px; opacity:0.7;">${recordCount.toLocaleString()} records</div>
                                 </div>
                                 ${isDefault ? '<span style="color:#f4d03f; font-size:11px; background:rgba(244,208,63,0.2); padding:4px 8px; border-radius:4px;">Default</span>' : ''}

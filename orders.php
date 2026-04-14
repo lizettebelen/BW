@@ -23,6 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     $orderDate = trim($_POST['order_date'] ?? '');
     $poStatus = trim($_POST['po_status'] ?? 'No PO');
     $poNumber = trim($_POST['po_number'] ?? '');
+    $serialNo = trim($_POST['serial_no'] ?? '');
     $notes = trim($_POST['notes'] ?? '');
     
     // Validate order date
@@ -60,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     foreach ($products as $product) {
         $itemCode = trim($product['item_code'] ?? '');
         $itemName = trim($product['item_name'] ?? '');
+        $productSerialNo = trim($product['serial_no'] ?? '');
         $quantity = max(1, intval($product['quantity'] ?? 1));
         $unitPrice = floatval($product['unit_price'] ?? 0);
         $foreignCost = floatval($product['foreign_cost'] ?? 0);
@@ -95,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         $stmt = $conn->prepare($sql);
         if ($stmt) {
             $invoiceNo = '';
-            $serialNo = '';
+            $serialNo = $productSerialNo;
             $stmt->bind_param(
                 'sssiissssissssddss',
                 $invoiceNo,
@@ -215,7 +217,7 @@ if ($linkedResult) {
 }
 
 $orders = [];
-$listSql = "SELECT id, order_customer, order_date, item_code, item_name, quantity, unit_price, total_amount, invoice_no, po_number, po_status, status, created_at
+$listSql = "SELECT id, order_customer, order_date, item_code, item_name, quantity, unit_price, total_amount, serial_no, invoice_no, po_number, po_status, status, created_at
             FROM delivery_records
             WHERE $where
             ORDER BY id DESC";
@@ -700,6 +702,7 @@ if ($listResult) {
                     <li class="menu-item"><a href="models.php" class="menu-link"><i class="fas fa-cube"></i><span class="menu-label">Models</span></a></li>
                     <li class="menu-item"><a href="reports.php" class="menu-link"><i class="fas fa-file-alt"></i><span class="menu-label">Reports</span></a></li>
                     <li class="menu-item"><a href="upload-data.php" class="menu-link"><i class="fas fa-upload"></i><span class="menu-label">Upload Data</span></a></li>
+                    <li class="menu-item"><a href="warranty-replacements.php" class="menu-link"><i class="fas fa-wrench"></i><span class="menu-label">Warranty Items</span></a></li>
                     <li class="menu-item"><a href="settings.php" class="menu-link"><i class="fas fa-cog"></i><span class="menu-label">Settings</span></a></li>
                 </ul>
             </div>
@@ -729,6 +732,7 @@ if ($listResult) {
                             <th>Order ID</th>
                             <th>Customer</th>
                             <th>Total</th>
+                            <th>Serial No.</th>
                             <th>Reference No.</th>
                             <th>PO Status</th>
                             <th>Action</th>
@@ -736,7 +740,7 @@ if ($listResult) {
                     </thead>
                     <tbody>
                         <?php if (empty($orders)): ?>
-                            <tr><td colspan="6" style="color:#9fb1c5;">No orders found for this filter.</td></tr>
+                            <tr><td colspan="7" style="color:#9fb1c5;">No orders found for this filter.</td></tr>
                         <?php else: ?>
                             <?php foreach ($orders as $order): ?>
                                 <?php
@@ -751,6 +755,7 @@ if ($listResult) {
                                     <td><?php echo h(so_id($order['id'])); ?></td>
                                     <td><?php echo h($order['order_customer'] ?: 'N/A'); ?></td>
                                     <td>PHP <?php echo number_format(floatval($order['total_amount'] ?? 0), 2); ?></td>
+                                    <td><?php echo h(trim((string) ($order['serial_no'] ?? '')) ?: 'Pending'); ?></td>
                                     <td>
                                         <?php $referenceNo = trim((string) ($order['invoice_no'] ?? '')); ?>
                                         <?php if ($referenceNo !== ''): ?>
@@ -807,6 +812,10 @@ if ($listResult) {
                         <label for="item_name">Product Name</label>
                         <input id="item_name" name="item_name" type="text" required>
                     </div>
+                        <div class="form-group">
+                            <label for="serial_no">Serial No.</label>
+                            <input id="serial_no" name="serial_no" type="text" placeholder="Optional">
+                        </div>
                     <div class="form-group">
                         <label for="quantity">Quantity</label>
                         <input id="quantity" name="quantity" type="number" min="1" value="1" required>

@@ -364,6 +364,9 @@ $topQtys     = json_encode(array_column($top_products, 'total_qty'));
                     <a href="upload-data.php" class="menu-link"><i class="fas fa-upload"></i><span class="menu-label">Upload Data</span></a>
                 </li>
                 <li class="menu-item">
+                    <a href="warranty-replacements.php" class="menu-link"><i class="fas fa-wrench"></i><span class="menu-label">Warranty Items</span></a>
+                </li>
+                <li class="menu-item">
                     <a href="settings.php" class="menu-link"><i class="fas fa-cog"></i><span class="menu-label">Settings</span></a>
                 </li>
             </ul>

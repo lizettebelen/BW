@@ -617,6 +617,14 @@ if (empty($_SESSION['user_id'])) {
                     </a>
                 </li>
 
+                <!-- Warranty Items -->
+                <li class="menu-item">
+                    <a href="warranty-replacements.php" class="menu-link">
+                        <i class="fas fa-wrench"></i>
+                        <span class="menu-label">Warranty Items</span>
+                    </a>
+                </li>
+
                 <!-- Settings -->
                 <li class="menu-item active">
                     <a href="settings.php" class="menu-link">

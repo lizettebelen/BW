@@ -605,6 +605,14 @@ if ($stats['total_delivered'] > 0 && $months_with_data > 0) {
                     </a>
                 </li>
 
+                <!-- Warranty Replacements -->
+                <li class="menu-item">
+                    <a href="warranty-replacements.php" class="menu-link">
+                        <i class="fas fa-wrench"></i>
+                        <span class="menu-label">Warranty Items</span>
+                    </a>
+                </li>
+
                 <!-- Settings -->
                 <li class="menu-item">
                     <a href="settings.php" class="menu-link">

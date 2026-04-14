@@ -886,6 +886,7 @@ if (preg_match('/Foreign Cost:\s*([\d,]+\.?\d*)/', $orderNotes, $matches)) {
                     <li class="menu-item"><a href="models.php" class="menu-link"><i class="fas fa-cube"></i><span class="menu-label">Models</span></a></li>
                     <li class="menu-item"><a href="reports.php" class="menu-link"><i class="fas fa-file-alt"></i><span class="menu-label">Reports</span></a></li>
                     <li class="menu-item"><a href="upload-data.php" class="menu-link"><i class="fas fa-upload"></i><span class="menu-label">Upload Data</span></a></li>
+                    <li class="menu-item"><a href="warranty-replacements.php" class="menu-link"><i class="fas fa-wrench"></i><span class="menu-label">Warranty Items</span></a></li>
                 </ul>
             </div>
         </aside>

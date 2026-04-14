@@ -31,6 +31,10 @@ $totalUnits = 0;
 $totalOrders = 0;
 $activeClients = 0;
 $recentDeliveries = [];
+$exportUnits = 0;
+$exportOrders = 0;
+$exportActiveClients = 0;
+$exportDeliveries = [];
 
 // Get total units delivered
 $result = $conn->query("SELECT COUNT(*) as total_orders, COALESCE(SUM(quantity), 0) as total_units FROM delivery_records WHERE 1=1$dataset_filter");
@@ -51,6 +55,26 @@ if ($result) {
     while ($row = $result->fetch_assoc()) {
         $recentDeliveries[] = $row;
     }
+}
+
+// Export must always include full system data, including Andison Manila/manual rows.
+$result = $conn->query("SELECT * FROM delivery_records ORDER BY id DESC");
+if ($result) {
+    $uniqueExportClients = [];
+    while ($row = $result->fetch_assoc()) {
+        $exportDeliveries[] = $row;
+        $exportUnits += intval($row['quantity'] ?? 0);
+        $exportOrders++;
+
+        $clientName = trim((string)($row['transferred_to'] ?? ''));
+        if ($clientName === '') {
+            $clientName = trim((string)($row['company_name'] ?? ''));
+        }
+        if ($clientName !== '') {
+            $uniqueExportClients[strtolower($clientName)] = true;
+        }
+    }
+    $exportActiveClients = count($uniqueExportClients);
 }
 
 // Get top 5 products by quantity
@@ -110,6 +134,8 @@ if ($result) {
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"></noscript>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="js/xlsx.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
     <style>
         .reports-grid {
             display: grid;
@@ -778,6 +804,14 @@ if ($result) {
                     </a>
                 </li>
 
+                <!-- Warranty Items -->
+                <li class="menu-item">
+                    <a href="warranty-replacements.php" class="menu-link">
+                        <i class="fas fa-wrench"></i>
+                        <span class="menu-label">Warranty Items</span>
+                    </a>
+                </li>
+
                 <!-- Settings -->
                 <li class="menu-item">
                     <a href="settings.php" class="menu-link">
@@ -824,7 +858,9 @@ if ($result) {
                 <div class="report-title">Sales Performance Report</div>
                 <div class="report-description">Monthly sales trends, revenue breakdown, and growth analysis</div>
                 <div class="report-actions">
-                    <button class="btn-report" style="grid-column: 1 / -1;">PDF</button>
+                    <button class="btn-report">PDF</button>
+                    <button class="btn-report">CSV</button>
+                    <button class="btn-report">XLSX</button>
                 </div>
             </div>
 
@@ -837,6 +873,7 @@ if ($result) {
                 <div class="report-actions">
                     <button class="btn-report">View</button>
                     <button class="btn-report">CSV</button>
+                    <button class="btn-report">XLSX</button>
                 </div>
             </div>
 
@@ -847,7 +884,9 @@ if ($result) {
                 <div class="report-title">Client Analytics Report</div>
                 <div class="report-description">Client acquisition, retention, and lifetime value analysis</div>
                 <div class="report-actions">
-                    <button class="btn-report" style="grid-column: 1 / -1;">PDF</button>
+                    <button class="btn-report">PDF</button>
+                    <button class="btn-report">CSV</button>
+                    <button class="btn-report">XLSX</button>
                 </div>
             </div>
 
@@ -859,6 +898,7 @@ if ($result) {
                 <div class="report-description">Shipping performance, delivery times, and logistics analysis</div>
                 <div class="report-actions">
                     <button class="btn-report">View</button>
+                    <button class="btn-report">CSV</button>
                     <button class="btn-report">XLSX</button>
                 </div>
             </div>
@@ -870,7 +910,9 @@ if ($result) {
                 <div class="report-title">Financial Report</div>
                 <div class="report-description">Revenue, expenses, profit margins, and financial forecasts</div>
                 <div class="report-actions">
-                    <button class="btn-report" style="grid-column: 1 / -1;">PDF</button>
+                    <button class="btn-report">PDF</button>
+                    <button class="btn-report">CSV</button>
+                    <button class="btn-report">XLSX</button>
                 </div>
             </div>
 
@@ -883,6 +925,7 @@ if ($result) {
                 <div class="report-actions">
                     <button class="btn-report">View</button>
                     <button class="btn-report">CSV</button>
+                    <button class="btn-report">XLSX</button>
                 </div>
             </div>
         </div>
@@ -936,7 +979,16 @@ if ($result) {
                     <i class="fas fa-file-excel"></i>
                 </div>
                 <div class="report-title">Export to Excel</div>
-                <div class="report-description">Download comprehensive workbook with multiple worksheets and charts</div>
+                <div class="report-description">Download complete system data in classic Excel format (.xls)</div>
+                <button class="btn-report" style="grid-column: 1 / -1;">Export Excel</button>
+            </div>
+
+            <div class="report-card">
+                <div class="report-icon">
+                    <i class="fas fa-file-excel"></i>
+                </div>
+                <div class="report-title">Export to XLSX</div>
+                <div class="report-description">Download complete system data in modern Excel workbook format (.xlsx)</div>
                 <button class="btn-report" style="grid-column: 1 / -1;">Export XLSX</button>
             </div>
 
@@ -967,8 +1019,14 @@ if ($result) {
             </div>
             <div class="report-modal-footer">
                 <button class="btn-modal" onclick="closeReportModal()">Close</button>
-                <button class="btn-modal primary" onclick="downloadCurrentReport()">
-                    <i class="fas fa-download"></i> Download PDF
+                <button class="btn-modal" onclick="downloadCurrentReportAs('CSV')">
+                    <i class="fas fa-file-csv"></i> Download CSV
+                </button>
+                <button class="btn-modal" onclick="downloadCurrentReportAs('XLSX')">
+                    <i class="fas fa-file-excel"></i> Download XLSX
+                </button>
+                <button class="btn-modal primary" onclick="downloadCurrentReportAs('PDF')">
+                    <i class="fas fa-file-pdf"></i> Download PDF
                 </button>
             </div>
         </div>
@@ -1399,6 +1457,17 @@ if ($result) {
             const dateStr = new Date().toISOString().split('T')[0];
             const w = window.open('', '_blank', 'width=960,height=750');
             if (!w) { showNotification('Please allow popups for PDF export.', 'error'); return; }
+
+            const temp = document.createElement('div');
+            temp.innerHTML = contentHTML;
+            temp.querySelectorAll('table').forEach(table => {
+                const wrap = document.createElement('div');
+                wrap.className = 'table-wrap';
+                table.parentNode.insertBefore(wrap, table);
+                wrap.appendChild(table);
+            });
+            const preparedContentHTML = temp.innerHTML;
+
             w.document.write(`<!DOCTYPE html><html><head>
                 <title>${title} - ${dateStr}</title>
                 <style>
@@ -1408,22 +1477,27 @@ if ($result) {
                     .toolbar span { color: #a0c8e8; font-size: 13px; }
                     .btn-save { background: #f4d03f; color: #1a3a5c; border: none; padding: 10px 24px; font-size: 14px; font-weight: 700; border-radius: 6px; cursor: pointer; font-family: Arial, sans-serif; }
                     .btn-save:hover { background: #e6c230; }
-                    .page { background: #fff; max-width: 860px; margin: 24px auto; padding: 40px; box-shadow: 0 2px 12px rgba(0,0,0,0.12); border-radius: 4px; }
+                    .page { background: #fff; max-width: 1500px; margin: 18px auto; padding: 26px; box-shadow: 0 2px 12px rgba(0,0,0,0.12); border-radius: 4px; }
                     .pdf-header { background: #1a3a5c; color: white; padding: 18px 22px; border-radius: 8px; margin-bottom: 22px; }
                     .pdf-header h1 { color: #fff; font-size: 20px; margin-bottom: 4px; }
                     .pdf-header p { color: #a0c8e8; font-size: 12px; }
                     .pdf-meta { color: #888; font-size: 11px; margin-bottom: 18px; border-bottom: 1px solid #e0e0e0; padding-bottom: 12px; }
                     h3 { color: #1a5490; margin: 22px 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #f4d03f; padding-bottom: 5px; }
                     p { margin: 7px 0; font-size: 13px; line-height: 1.6; }
-                    table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 12px; }
-                    th { background: #2f5fa7; color: #fff; padding: 9px 12px; text-align: left; font-weight: 600; }
-                    td { padding: 8px 12px; border-bottom: 1px solid #e8e8e8; }
+                    .table-wrap { overflow-x: auto; border: 1px solid #dbe4ef; border-radius: 6px; margin: 12px 0 20px; }
+                    table { width: 100%; min-width: 1320px; border-collapse: collapse; margin: 0; font-size: 11px; }
+                    th { background: #2f5fa7; color: #fff; padding: 8px 9px; text-align: left; font-weight: 600; }
+                    td { padding: 7px 9px; border-bottom: 1px solid #e8e8e8; vertical-align: top; word-break: break-word; }
                     tr:nth-child(even) td { background: #f7f9fc; }
                     strong { font-weight: 600; }
                     @media print {
+                        @page { size: A3 landscape; margin: 8mm; }
                         .toolbar { display: none !important; }
                         body { background: #fff; }
-                        .page { box-shadow: none; margin: 0; padding: 20px; }
+                        .page { box-shadow: none; margin: 0; padding: 0; max-width: none; }
+                        .table-wrap { overflow: visible; border: none; }
+                        table { min-width: 100%; font-size: 9px; }
+                        th, td { padding: 4px 5px; }
                         .pdf-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                         th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                         tr:nth-child(even) td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1441,7 +1515,7 @@ if ($result) {
                         <p>Andison Industrial Sales Inc.</p>
                     </div>
                     <p class="pdf-meta">Generated: ${new Date().toLocaleString()}</p>
-                    ${contentHTML}
+                    ${preparedContentHTML}
                 </div>
 
             </body></html>`);
@@ -1449,16 +1523,24 @@ if ($result) {
         }
 
         function downloadCurrentReport() {
+            downloadCurrentReportAs('PDF');
+        }
+
+        function downloadCurrentReportAs(format = 'PDF') {
             if (currentReportData) {
-                const element = document.getElementById('reportModalBody');
-                openPrintWindow(currentReportData.title, element.innerHTML);
-                showNotification(`Opening ${currentReportData.title} for PDF export...`, 'success');
+                handleExport(`Export ${String(format || 'PDF').toUpperCase()}`);
             }
         }
         
         function downloadReport(reportName, format) {
             const report = reportData[reportName];
             if (!report) return;
+
+            // Use unified full-system export for all file exports from report cards.
+            if (format === 'PDF' || format === 'CSV' || format === 'XLSX') {
+                handleExport(`Export ${format}`);
+                return;
+            }
             
             if (format === 'PDF') {
                 openPrintWindow(reportName, report.content);
@@ -1573,199 +1655,129 @@ if ($result) {
         }
         
         function handleExport(action) {
-            const format = action.match(/CSV|XLSX|PDF/)[0];
+            const formatMatch = action.toUpperCase().match(/CSV|EXCEL|XLSX|PDF/);
+            if (!formatMatch) {
+                showNotification('Unsupported export format', 'error');
+                return;
+            }
+
+            const format = formatMatch[0];
             const filename = `BW_Gas_Detector_Export_${new Date().toISOString().split('T')[0]}`;
-            
-            // Get export data from PHP - includes ALL complete delivery records
-            const exportData = {
-                totalUnits: <?php echo $totalUnits; ?>,
-                totalOrders: <?php echo $totalOrders; ?>,
-                activeClients: <?php echo $activeClients; ?>,
-                allDeliveries: <?php echo json_encode($recentDeliveries); ?>
-            };
-            
-            if (format === 'PDF') {
-                const exportHTML = `
-                    <h3>Year-to-Date Summary</h3>
-                    <table>
-                        <tr><th>Metric</th><th>Value</th></tr>
-                        <tr><td>Total Records</td><td>${exportData.allDeliveries.length.toLocaleString()}</td></tr>
-                        <tr><td>Units Delivered</td><td>${exportData.totalUnits.toLocaleString()}</td></tr>
-                        <tr><td>Total Orders</td><td>${exportData.totalOrders.toLocaleString()}</td></tr>
-                        <tr><td>Active Clients</td><td>${exportData.activeClients}</td></tr>
-                    </table>
-                    <h3>Complete Delivery Records (${exportData.allDeliveries.length} total)</h3>
-                    <table style="font-size: 11px;">
-                        <tr><th>Invoice</th><th>Item Code</th><th>Description</th><th>Qty</th><th>Company</th><th>Serial No.</th><th>Delivery Date</th><th>Status</th></tr>
-                        ${exportData.allDeliveries.length ? exportData.allDeliveries.map(rec => {
-                            const deliveryDate = rec.delivery_date ? new Date(rec.delivery_date).toLocaleDateString() : '';
-                            return `<tr><td>${rec.invoice_no || ''}</td><td>${rec.item_code || ''}</td><td>${rec.item_name || ''}</td><td style="text-align:center;">${rec.quantity || 0}</td><td>${rec.company_name || ''}</td><td>${rec.serial_no || ''}</td><td>${deliveryDate}</td><td>${rec.status || ''}</td></tr>`;
-                        }).join('') : '<tr><td colspan="8">No delivery records available.</td></tr>'}
-                    </table>
-                `;
-                openPrintWindow('BW Gas Detector - Complete Data Export', exportHTML);
-                showNotification(`✅ Opening complete data export for PDF (${exportData.allDeliveries.length} records)...`, 'success');
-            } else if (format === 'CSV') {
-                // Build XML string step by step
-                let xmlContent = '<' + '?xml version="1.0" encoding="UTF-8"?>';
-                xmlContent += '<' + '?mso-application progid="Excel.Sheet"?>';
-                xmlContent += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
-                xmlContent += '<Styles>';
-                xmlContent += '<Style ss:ID="Default"><Font ss:FontName="Calibri" ss:Size="11"/></Style>';
-                xmlContent += '<Style ss:ID="titleStyle"><Font ss:FontName="Calibri" ss:Size="18" ss:Bold="1" ss:Color="#1a3a5c"/><Alignment ss:Horizontal="Left" ss:Vertical="Center"/></Style>';
-                xmlContent += '<Style ss:ID="dateStyle"><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#666666"/><Alignment ss:Horizontal="Left" ss:Vertical="Center"/></Style>';
-                xmlContent += '<Style ss:ID="summaryHeader"><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#003399" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/></Borders><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>';
-                xmlContent += '<Style ss:ID="detailHeader"><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#003399" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#003399"/></Borders><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>';
-                xmlContent += '<Style ss:ID="dataLight"><Font ss:FontName="Calibri" ss:Size="10"/><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CCCCCC"/></Borders><Alignment ss:Horizontal="Left" ss:Vertical="Center"/></Style>';
-                xmlContent += '<Style ss:ID="dataDark"><Font ss:FontName="Calibri" ss:Size="10"/><Interior ss:Color="#F5F5F5" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CCCCCC"/></Borders><Alignment ss:Horizontal="Left" ss:Vertical="Center"/></Style>';
-                xmlContent += '</Styles>';
-                xmlContent += '<Worksheet ss:Name="Report">';
-                xmlContent += '<Table ss:DefaultColumnWidth="100" ss:DefaultRowHeight="18">';
-                xmlContent += '<Column ss:Width="100"/><Column ss:Width="100"/><Column ss:Width="180"/><Column ss:Width="70"/><Column ss:Width="120"/><Column ss:Width="100"/><Column ss:Width="100"/><Column ss:Width="100"/>';
-                
-                // Title
-                xmlContent += '<Row ss:Height="30"><Cell ss:StyleID="titleStyle" ss:MergeAcross="6"><Data ss:Type="String">Product Model Report</Data></Cell></Row>';
-                xmlContent += '<Row ss:Height="18"><Cell ss:StyleID="dateStyle" ss:MergeAcross="6"><Data ss:Type="String">Generated: ' + new Date().toLocaleString() + '</Data></Cell></Row>';
-                xmlContent += '<Row></Row>';
-                
-                // Summary header
-                xmlContent += '<Row ss:Height="24">';
-                xmlContent += '<Cell ss:StyleID="summaryHeader"><Data ss:Type="String">Item Code</Data></Cell>';
-                xmlContent += '<Cell ss:StyleID="summaryHeader"><Data ss:Type="String">Description</Data></Cell>';
-                xmlContent += '<Cell ss:StyleID="summaryHeader"><Data ss:Type="String">Orders</Data></Cell>';
-                xmlContent += '<Cell ss:StyleID="summaryHeader"><Data ss:Type="String">Units</Data></Cell>';
-                xmlContent += '</Row>';
-                
-                // Group and summarize data
-                const itemSummary = {};
-                exportData.allDeliveries.forEach(rec => {
-                    const code = rec.item_code || 'Unknown';
-                    if (!itemSummary[code]) {
-                        itemSummary[code] = {
-                            code: code,
-                            description: rec.item_name || '',
-                            orders: 0,
-                            units: 0
-                        };
-                    }
-                    itemSummary[code].orders++;
-                    itemSummary[code].units += parseInt(rec.quantity || 0);
-                });
-                
-                // Add summary rows
-                let summaryIndex = 0;
-                Object.values(itemSummary).forEach((item) => {
-                    const rowStyle = summaryIndex % 2 === 0 ? 'dataLight' : 'dataDark';
-                    xmlContent += '<Row ss:Height="18">';
-                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (item.code || '') + '</Data></Cell>';
-                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (item.description || '') + '</Data></Cell>';
-                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="Number">' + item.orders + '</Data></Cell>';
-                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="Number">' + item.units + '</Data></Cell>';
-                    xmlContent += '</Row>';
-                    summaryIndex++;
-                });
-                
-                xmlContent += '<Row></Row>';
-                
-                // Detail header
-                xmlContent += '<Row ss:Height="24">';
-                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Invoice</Data></Cell>';
-                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Item Code</Data></Cell>';
-                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Description</Data></Cell>';
-                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Qty</Data></Cell>';
-                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Company</Data></Cell>';
-                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Serial No.</Data></Cell>';
-                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Delivery Date</Data></Cell>';
-                xmlContent += '<Cell ss:StyleID="detailHeader"><Data ss:Type="String">Status</Data></Cell>';
-                xmlContent += '</Row>';
-                
-                // Add detailed rows
-                exportData.allDeliveries.forEach((rec, index) => {
-                    const rowStyle = index % 2 === 0 ? 'dataLight' : 'dataDark';
-                    const deliveryDate = rec.delivery_date ? new Date(rec.delivery_date).toLocaleDateString() : '';
-                    xmlContent += '<Row ss:Height="18">';
-                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (rec.invoice_no || '') + '</Data></Cell>';
-                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (rec.item_code || '') + '</Data></Cell>';
-                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (rec.item_name || '') + '</Data></Cell>';
-                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="Number">' + (rec.quantity || 0) + '</Data></Cell>';
-                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (rec.company_name || '') + '</Data></Cell>';
-                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (rec.serial_no || '') + '</Data></Cell>';
-                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + deliveryDate + '</Data></Cell>';
-                    xmlContent += '<Cell ss:StyleID="' + rowStyle + '"><Data ss:Type="String">' + (rec.status || '') + '</Data></Cell>';
-                    xmlContent += '</Row>';
-                });
-                
-                xmlContent += '</Table></Worksheet></Workbook>';
-                
-                const blob = new Blob([xmlContent], { type: 'application/vnd.ms-excel; charset=utf-8' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = filename + '.xls';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(link.href);
-                showNotification(`✅ Exporting ${exportData.allDeliveries.length} complete records to Excel...`, 'success');
-            } else if (format === 'XLSX') {
+
+            function getCompanyForExport(rec) {
+                return String(rec.transferred_to || rec.company_name || '').trim();
+            }
+
+            function getRemarksForExport(rec) {
+                return String(rec.remarks || rec.notes || '').trim();
+            }
+
+            function formatDateForExport(dateValue) {
+                return dateValue ? new Date(dateValue).toLocaleDateString() : '';
+            }
+
+            function formatLongDateForExport(dateValue) {
+                return dateValue
+                    ? new Date(dateValue).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : '';
+            }
+
+            function escapeCsvCell(value) {
+                const text = String(value ?? '');
+                if (/[",\n\r]/.test(text)) {
+                    return '"' + text.replace(/"/g, '""') + '"';
+                }
+                return text;
+            }
+
+            function escapeXml(value) {
+                return String(value ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&apos;');
+            }
+
+            function buildRowObject(rec) {
+                return {
+                    'Invoice No.': rec.invoice_no || '',
+                    'Date': formatDateForExport(rec.delivery_date),
+                    'Delivery Month To Andison': rec.delivery_month || '',
+                    'Delivery Day To Andison': rec.delivery_day || '',
+                    'Year': rec.delivery_year || '',
+                    'Item Code': rec.item_code || '',
+                    'Description': rec.item_name || '',
+                    'Qty.': String(rec.quantity ?? ''),
+                    'UOM': rec.uom || '',
+                    'Serial No.': rec.serial_no || '',
+                    'Transferred': getCompanyForExport(rec),
+                    'Sold To': rec.sold_to || '',
+                    'Date Delivered': formatLongDateForExport(rec.delivery_date),
+                    'Transferred Month': rec.sold_to_month || '',
+                    'Transferred Day': rec.sold_to_day || '',
+                    'Remarks': getRemarksForExport(rec),
+                    'Groupings': rec.groupings || '',
+                    'Status': rec.status || ''
+                };
+            }
+
+            function downloadExcelXml(baseName, records) {
+                const headers = Object.keys(buildRowObject({}));
+                const columnWidths = {
+                    'Invoice No.': 95,
+                    'Date': 90,
+                    'Delivery Month To Andison': 125,
+                    'Delivery Day To Andison': 110,
+                    'Year': 60,
+                    'Item Code': 95,
+                    'Description': 210,
+                    'Qty.': 75,
+                    'UOM': 55,
+                    'Serial No.': 125,
+                    'Transferred': 125,
+                    'Sold To': 130,
+                    'Date Delivered': 110,
+                    'Transferred Month': 120,
+                    'Transferred Day': 110,
+                    'Remarks': 160,
+                    'Groupings': 80,
+                    'Status': 90
+                };
                 let xmlRows = '';
-                
-                // Title
-                xmlRows += '<Row ss:Height="30"><Cell ss:StyleID="title" ss:MergeAcross="15"><Data ss:Type="String">BW Gas Detector - Complete Delivery Records Export</Data></Cell></Row>';
-                xmlRows += `<Row><Cell ss:MergeAcross="15"><Data ss:Type="String">Generated: ${new Date().toLocaleString()}</Data></Cell></Row>`;
+                let xmlColumns = '';
+
+                headers.forEach(header => {
+                    const width = columnWidths[header] || 100;
+                    xmlColumns += `<Column ss:Width="${width}"/>`;
+                });
+
+                xmlRows += '<Row ss:Height="30"><Cell ss:StyleID="title" ss:MergeAcross="16"><Data ss:Type="String">BW Gas Detector - Complete System Data Export</Data></Cell></Row>';
+                xmlRows += `<Row><Cell ss:MergeAcross="16"><Data ss:Type="String">Generated: ${escapeXml(new Date().toLocaleString())}</Data></Cell></Row>`;
                 xmlRows += '<Row></Row>';
-                
-                // Summary
                 xmlRows += '<Row><Cell ss:StyleID="section" ss:MergeAcross="1"><Data ss:Type="String">EXPORT SUMMARY</Data></Cell></Row>';
-                xmlRows += '<Row><Cell ss:StyleID="header"><Data ss:Type="String">Total Records</Data></Cell><Cell ss:StyleID="header"><Data ss:Type="Number">' + exportData.allDeliveries.length + '</Data></Cell></Row>';
+                xmlRows += `<Row><Cell ss:StyleID="header"><Data ss:Type="String">Total Records</Data></Cell><Cell ss:StyleID="header"><Data ss:Type="Number">${records.length}</Data></Cell></Row>`;
                 xmlRows += `<Row><Cell><Data ss:Type="String">Total Units</Data></Cell><Cell><Data ss:Type="Number">${exportData.totalUnits}</Data></Cell></Row>`;
                 xmlRows += `<Row><Cell><Data ss:Type="String">Total Orders</Data></Cell><Cell><Data ss:Type="Number">${exportData.totalOrders}</Data></Cell></Row>`;
                 xmlRows += `<Row><Cell><Data ss:Type="String">Active Clients</Data></Cell><Cell><Data ss:Type="Number">${exportData.activeClients}</Data></Cell></Row>`;
                 xmlRows += '<Row></Row>';
-                
-                // All Delivery Records
-                xmlRows += '<Row><Cell ss:StyleID="section" ss:MergeAcross="15"><Data ss:Type="String">ALL DELIVERY RECORDS (' + exportData.allDeliveries.length + ' total)</Data></Cell></Row>';
-                xmlRows += '<Row ss:Height="24">'
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Invoice No.</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Item Code</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Description</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Quantity</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">UOM</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Company</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Serial No.</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Delivery Date</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Delivery Month</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Delivery Day</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Year</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Sold To</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Sold To Month</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Sold To Day</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Remarks</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Groupings</Data></Cell>';
-                xmlRows += '<Cell ss:StyleID="header"><Data ss:Type="String">Status</Data></Cell>';
+
+                xmlRows += '<Row>';
+                headers.forEach(header => {
+                    xmlRows += `<Cell ss:StyleID="header"><Data ss:Type="String">${escapeXml(header)}</Data></Cell>`;
+                });
                 xmlRows += '</Row>';
-                
-                exportData.allDeliveries.forEach(rec => {
+
+                records.forEach(row => {
                     xmlRows += '<Row>';
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.invoice_no || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.item_code || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.item_name || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="Number">${rec.quantity || 0}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.uom || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.company_name || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.serial_no || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.delivery_date ? new Date(rec.delivery_date).toLocaleDateString() : ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.delivery_month || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.delivery_day || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="Number">${rec.delivery_year || 0}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.sold_to || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.sold_to_month || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.sold_to_day || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.notes || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.groupings || ''}</Data></Cell>`;
-                    xmlRows += `<Cell><Data ss:Type="String">${rec.status || ''}</Data></Cell>`;
+                    headers.forEach((header) => {
+                        const value = row[header];
+                        const valueType = typeof value === 'number' ? 'Number' : 'String';
+                        xmlRows += `<Cell><Data ss:Type="${valueType}">${escapeXml(value)}</Data></Cell>`;
+                    });
                     xmlRows += '</Row>';
                 });
-                
+
                 const excelXml = `<` + `?xml version="1.0" encoding="UTF-8"?>
 <` + `?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
@@ -1776,17 +1788,236 @@ if ($result) {
     <Style ss:ID="header"><Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#2f5fa7" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/></Style>
 </Styles>
 <Worksheet ss:Name="All Records">
-<Table>${xmlRows}</Table>
+<Table>${xmlColumns}${xmlRows}</Table>
 </Worksheet>
 </Workbook>`;
-                
+
                 const blob = new Blob([excelXml], { type: 'application/vnd.ms-excel' });
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
-                link.download = filename + '.xls';
+                link.download = baseName + '.xls';
                 link.click();
                 URL.revokeObjectURL(link.href);
-                showNotification(`✅ Exporting ${exportData.allDeliveries.length} complete records to Excel...`, 'success');
+            }
+            
+            // Get export data from PHP - includes ALL complete delivery records in the system
+            const exportData = {
+                totalUnits: <?php echo $exportUnits; ?>,
+                totalOrders: <?php echo $exportOrders; ?>,
+                activeClients: <?php echo $exportActiveClients; ?>,
+                allDeliveries: <?php echo json_encode($exportDeliveries); ?>
+            };
+
+            const normalizedRows = exportData.allDeliveries.map(buildRowObject);
+            const headers = Object.keys(buildRowObject({}));
+            const dataRows = normalizedRows.map(row => headers.map(h => row[h]));
+
+            if (format === 'PDF') {
+                const exportHTML = `
+                    <h3>Year-to-Date Summary</h3>
+                    <table>
+                        <tr><th>Metric</th><th>Value</th></tr>
+                        <tr><td>Total Records</td><td>${exportData.allDeliveries.length.toLocaleString()}</td></tr>
+                        <tr><td>Units Delivered</td><td>${exportData.totalUnits.toLocaleString()}</td></tr>
+                        <tr><td>Total Orders</td><td>${exportData.totalOrders.toLocaleString()}</td></tr>
+                        <tr><td>Active Clients</td><td>${exportData.activeClients}</td></tr>
+                    </table>
+                    <h3>Complete System Records (${exportData.allDeliveries.length} total)</h3>
+                    <table style="font-size: 11px;">
+                        <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+                        ${normalizedRows.length ? normalizedRows.map(row => `<tr>${headers.map(h => `<td>${String(row[h] ?? '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${headers.length}">No records available.</td></tr>`}
+                    </table>
+                `;
+                openPrintWindow('BW Gas Detector - Complete Data Export', exportHTML);
+                showNotification(`✅ Opening complete data export for PDF (${exportData.allDeliveries.length} records)...`, 'success');
+                return;
+            }
+
+            if (format === 'CSV') {
+                const textPreferredColumns = new Set([
+                    'Invoice No.',
+                    'Qty.',
+                    'Delivery Day To Andison',
+                    'Year',
+                    'Transferred Day'
+                ]);
+
+                function normalizeCsvValue(header, value) {
+                    const text = String(value ?? '');
+                    // Keep large numeric-looking values as text to avoid Excel scientific notation.
+                    if (textPreferredColumns.has(header) && /^\d{8,}$/.test(text)) {
+                        return `'${text}`;
+                    }
+                    // Protect against CSV formula execution in spreadsheet apps.
+                    if (/^[=+\-@]/.test(text)) {
+                        return `'${text}`;
+                    }
+                    return text;
+                }
+
+                const totalCols = headers.length;
+
+                function padRow(values) {
+                    const row = values.slice(0, totalCols);
+                    while (row.length < totalCols) row.push('');
+                    return row;
+                }
+
+                function pushCsvRow(csvRows, values) {
+                    csvRows.push(padRow(values).map(escapeCsvCell).join(','));
+                }
+
+                const csvRows = [];
+                const generatedAt = new Date().toLocaleString();
+
+                pushCsvRow(csvRows, ['BW Gas Detector - Complete System Data Export']);
+                pushCsvRow(csvRows, [`Generated: ${generatedAt}`]);
+                pushCsvRow(csvRows, []);
+                pushCsvRow(csvRows, ['EXPORT SUMMARY']);
+                pushCsvRow(csvRows, ['Total Records', normalizedRows.length]);
+                pushCsvRow(csvRows, ['Total Units', exportData.totalUnits]);
+                pushCsvRow(csvRows, ['Total Orders', exportData.totalOrders]);
+                pushCsvRow(csvRows, ['Active Clients', exportData.activeClients]);
+                pushCsvRow(csvRows, []);
+                pushCsvRow(csvRows, headers);
+
+                normalizedRows.forEach(row => {
+                    pushCsvRow(csvRows, headers.map(h => normalizeCsvValue(h, row[h])));
+                });
+                const csvContent = '\uFEFF' + csvRows.join('\r\n');
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = filename + '.csv';
+                link.click();
+                URL.revokeObjectURL(link.href);
+                showNotification(`✅ Exporting ${normalizedRows.length} complete records to CSV...`, 'success');
+                return;
+            }
+
+            if (format === 'EXCEL') {
+                downloadExcelXml(filename, normalizedRows);
+                showNotification(`✅ Exporting ${normalizedRows.length} complete records to Excel...`, 'success');
+                return;
+            }
+
+            if (format === 'XLSX') {
+                if (typeof ExcelJS === 'undefined') {
+                    downloadExcelXml(filename, normalizedRows);
+                    showNotification('XLSX style library not loaded. Downloaded as Excel (.xls) instead.', 'warning');
+                    return;
+                }
+
+                (async () => {
+                    try {
+                        const workbook = new ExcelJS.Workbook();
+                        const sheet = workbook.addWorksheet('All Records');
+
+                        const widthMap = {
+                            'Invoice No.': 16,
+                            'Date': 12,
+                            'Delivery Month To Andison': 20,
+                            'Delivery Day To Andison': 20,
+                            'Year': 10,
+                            'Item Code': 14,
+                            'Description': 34,
+                            'Qty.': 10,
+                            'UOM': 10,
+                            'Serial No.': 20,
+                            'Transferred': 20,
+                            'Sold To': 20,
+                            'Date Delivered': 16,
+                            'Transferred Month': 18,
+                            'Transferred Day': 16,
+                            'Remarks': 24,
+                            'Groupings': 12,
+                            'Status': 12
+                        };
+
+                        headers.forEach((header, idx) => {
+                            sheet.getColumn(idx + 1).width = widthMap[header] || 14;
+                        });
+
+                        sheet.mergeCells(1, 1, 1, headers.length);
+                        sheet.getCell(1, 1).value = 'BW Gas Detector - Complete System Data Export';
+                        sheet.getCell(1, 1).font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FF1A5490' } };
+                        sheet.getCell(1, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF3FF' } };
+                        sheet.getCell(1, 1).alignment = { horizontal: 'left', vertical: 'middle' };
+
+                        sheet.mergeCells(2, 1, 2, headers.length);
+                        sheet.getCell(2, 1).value = `Generated: ${new Date().toLocaleString()}`;
+                        sheet.getCell(2, 1).font = { name: 'Calibri', size: 11, color: { argb: 'FF666666' } };
+
+                        sheet.getCell(4, 1).value = 'EXPORT SUMMARY';
+                        sheet.getCell(4, 1).font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FF333333' } };
+                        sheet.getCell(4, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF4D03F' } };
+
+                        const summaryRows = [
+                            ['Total Records', normalizedRows.length],
+                            ['Total Units', exportData.totalUnits],
+                            ['Total Orders', exportData.totalOrders],
+                            ['Active Clients', exportData.activeClients]
+                        ];
+
+                        summaryRows.forEach((entry, i) => {
+                            const r = 5 + i;
+                            sheet.getCell(r, 1).value = entry[0];
+                            sheet.getCell(r, 2).value = entry[1];
+                            sheet.getCell(r, 1).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+                            sheet.getCell(r, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2F5FA7' } };
+                            sheet.getCell(r, 2).font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1A5490' } };
+                            sheet.getCell(r, 2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F4FC' } };
+                            sheet.getCell(r, 2).alignment = { horizontal: 'right', vertical: 'middle' };
+                        });
+
+                        const headerRowIndex = 10;
+                        headers.forEach((header, idx) => {
+                            const cell = sheet.getCell(headerRowIndex, idx + 1);
+                            cell.value = header;
+                            cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2F5FA7' } };
+                            cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                            cell.border = {
+                                top: { style: 'thin', color: { argb: 'FF1A3A5C' } },
+                                left: { style: 'thin', color: { argb: 'FF1A3A5C' } },
+                                bottom: { style: 'thin', color: { argb: 'FF1A3A5C' } },
+                                right: { style: 'thin', color: { argb: 'FF1A3A5C' } }
+                            };
+                        });
+
+                        dataRows.forEach((rowData, rowIdx) => {
+                            const rowNum = headerRowIndex + 1 + rowIdx;
+                            rowData.forEach((value, colIdx) => {
+                                const cell = sheet.getCell(rowNum, colIdx + 1);
+                                cell.value = value;
+                                cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF222222' } };
+                                cell.fill = {
+                                    type: 'pattern',
+                                    pattern: 'solid',
+                                    fgColor: { argb: rowIdx % 2 === 0 ? 'FFFFFFFF' : 'FFF7F9FC' }
+                                };
+                                cell.alignment = { vertical: 'middle' };
+                                cell.border = {
+                                    bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+                                    left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+                                    right: { style: 'thin', color: { argb: 'FFE0E0E0' } }
+                                };
+                            });
+                        });
+
+                        const buffer = await workbook.xlsx.writeBuffer();
+                        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = filename + '.xlsx';
+                        link.click();
+                        URL.revokeObjectURL(link.href);
+                        showNotification(`✅ Exporting ${normalizedRows.length} complete records to XLSX...`, 'success');
+                    } catch (err) {
+                        downloadExcelXml(filename, normalizedRows);
+                        showNotification('Failed to apply XLSX styles. Downloaded as Excel (.xls) instead.', 'warning');
+                    }
+                })();
             }
         }
         

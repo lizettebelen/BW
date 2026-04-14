@@ -523,6 +523,14 @@ if (empty($_SESSION['user_id'])) {
                         <span class="menu-label">Upload Data</span>
                     </a>
                 </li>
+
+                <!-- Warranty Items -->
+                <li class="menu-item">
+                    <a href="warranty-replacements.php" class="menu-link">
+                        <i class="fas fa-wrench"></i>
+                        <span class="menu-label">Warranty Items</span>
+                    </a>
+                </li>
             </ul>
         </div>
 

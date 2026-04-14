@@ -34,7 +34,7 @@ $result = $conn->query("
         groupings,
         status
     FROM delivery_records
-    WHERE company_name = '{$companyName}' OR transferred_to = '{$companyName}'
+    WHERE (company_name = '{$companyName}' OR transferred_to = '{$companyName}')
     ORDER BY delivery_year DESC, delivery_month DESC, delivery_day DESC
 ");
 
@@ -52,11 +52,13 @@ $itemCodes = array_unique(array_column($delivery_records, 'item_code'));
 $totalItemTypes = count($itemCodes);
 
 // Count records with a sold_to value
-$totalSold = count(array_filter($delivery_records, function($r) {
-    $soldTo = !empty($r['transferred_to']) && $r['transferred_to'] === 'to Andison Manila'
-        ? ($r['company_name'] ?? '')
-        : ($r['sold_to'] ?? '');
-    return $soldTo !== '';
+$isRealSoldTo = function ($value) {
+    $normalized = strtolower(trim((string) $value));
+    return $normalized !== '' && $normalized !== 'andison manila' && $normalized !== 'to andison manila';
+};
+
+$totalSold = count(array_filter($delivery_records, function($r) use ($isRealSoldTo) {
+    return $isRealSoldTo($r['sold_to'] ?? '');
 }));
 ?>
 <!DOCTYPE html>
@@ -401,6 +403,46 @@ $totalSold = count(array_filter($delivery_records, function($r) {
             border-color: #3a86ff;
         }
 
+        .group-filter-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+        }
+
+        .group-filter-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #d4deea;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .group-filter-select {
+            min-width: 170px;
+            padding: 8px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.18);
+            background: rgba(255,255,255,0.08);
+            color: #d4deea;
+            font-family: 'Poppins', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .group-filter-select:focus {
+            outline: none;
+            border-color: #3a86ff;
+        }
+
+        .group-filter-select option {
+            background: #1e2a38;
+            color: #d4deea;
+        }
+
         html.light-mode .page-title,
         body.light-mode .page-title { color: #1f2b3a; }
         html.light-mode .page-title i,
@@ -444,6 +486,10 @@ $totalSold = count(array_filter($delivery_records, function($r) {
         body.light-mode .filter-tab { background: #f0f0f0; color: #333; border-color: #ccc; }
         html.light-mode .filter-tab.active,
         body.light-mode .filter-tab.active { background: #0066cc; color: #fff; border-color: #0066cc; }
+        html.light-mode .group-filter-label,
+        body.light-mode .group-filter-label { color: #334155; }
+        html.light-mode .group-filter-select,
+        body.light-mode .group-filter-select { background: #fff; color: #222; border-color: #ccc; }
         html.light-mode .search-box input,
         body.light-mode .search-box input { background: #fff; color: #222; border-color: #ccc; }
 
@@ -748,6 +794,13 @@ $totalSold = count(array_filter($delivery_records, function($r) {
                     </li>
 
                     <li class="menu-item">
+                        <a href="warranty-replacements.php" class="menu-link">
+                            <i class="fas fa-wrench"></i>
+                            <span class="menu-label">Warranty Items</span>
+                        </a>
+                    </li>
+
+                    <li class="menu-item">
                         <a href="settings.php" class="menu-link">
                             <i class="fas fa-cog"></i>
                             <span class="menu-label">Settings</span>
@@ -804,20 +857,26 @@ $totalSold = count(array_filter($delivery_records, function($r) {
                 <div class="section-title">
                     <i class="fas fa-list"></i> Delivery Records
                 </div>
-                <?php if ($totalDeliveries > 0): ?>
 
                 <!-- Filter Tabs -->
-                <div class="filter-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-                    <button class="filter-tab active" id="tabAll" data-filter="all" onclick="setFilter('all')">All Records</button>
-                    <button class="filter-tab" id="tabSales" data-filter="sales" onclick="setFilter('sales')"><i class="fas fa-tag" style="margin-right:5px;"></i>Sales</button>
+                <div class="filter-tabs primary-filter-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+                    <button class="filter-tab active" id="tabAll" data-primary-filter="all" onclick="setPrimaryFilter('all')">All Records</button>
+                    <button class="filter-tab" id="tabSales" data-primary-filter="sales" onclick="setPrimaryFilter('sales')"><i class="fas fa-tag" style="margin-right:5px;"></i>Sales</button>
                 </div>
-                <div class="filter-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-                    <button class="filter-tab" id="tab1A" data-filter="1a" onclick="setFilter('1a')">1A</button>
-                    <button class="filter-tab" id="tab1B" data-filter="1b" onclick="setFilter('1b')">1B</button>
-                    <button class="filter-tab" id="tab2A" data-filter="2a" onclick="setFilter('2a')">2A</button>
-                    <button class="filter-tab" id="tab3A" data-filter="3a" onclick="setFilter('3a')">3A</button>
-                    <button class="filter-tab" id="tab4A" data-filter="4a" onclick="setFilter('4a')">4A</button>
+
+                <div class="group-filter-row" id="groupFilterRow">
+                    <span class="group-filter-label"><i class="fas fa-filter"></i> Filter</span>
+                    <select id="groupingFilterSelect" class="group-filter-select" onchange="setGroupingFilter(this.value)">
+                        <option value="all">All</option>
+                        <option value="1a">1A</option>
+                        <option value="1b">1B</option>
+                        <option value="2a">2A</option>
+                        <option value="3a">3A</option>
+                        <option value="4a">4A</option>
+                    </select>
                 </div>
+
+                <?php if ($totalDeliveries > 0): ?>
 
                 <!-- Search Bar -->
                 <div class="search-container">
@@ -867,11 +926,11 @@ $totalSold = count(array_filter($delivery_records, function($r) {
                                 $sold_to_month = !empty($record['sold_to_month']) ? $record['sold_to_month'] : '';
                                 $sold_to_day = !empty($record['sold_to_day']) ? $record['sold_to_day'] : '';
 
-                                // Determine the actual sold-to value for filtering
-                                if (!empty($record['transferred_to']) && $record['transferred_to'] === 'to Andison Manila') {
-                                    $row_sold_to = $record['company_name'] ?? '';
-                                } else {
-                                    $row_sold_to = $record['sold_to'] ?? '';
+                                // Only treat real customer names as sold-to values.
+                                $row_sold_to = trim((string) ($record['sold_to'] ?? ''));
+                                $sold_to_normalized = strtolower($row_sold_to);
+                                if ($sold_to_normalized === 'andison manila' || $sold_to_normalized === 'to andison manila') {
+                                    $row_sold_to = '';
                                 }
                             ?>
                             <tr data-soldto="<?php echo !empty($row_sold_to) ? '1' : '0'; ?>" data-grouping="<?php echo strtolower(trim((string) ($record['groupings'] ?? ''))); ?>">
@@ -892,13 +951,7 @@ $totalSold = count(array_filter($delivery_records, function($r) {
                                 ?></td>
                                 <td><?php
                                     // "Sold To" = actual end customer
-                                    // New-style: transferred_to='to Andison Manila', customer in company_name
-                                    // Old-style / normalized: company_name='to Andison Manila', customer in sold_to
-                                    if (!empty($record['transferred_to']) && $record['transferred_to'] === 'to Andison Manila') {
-                                        echo htmlspecialchars($record['company_name'] ?? '');
-                                    } else {
-                                        echo htmlspecialchars($record['sold_to'] ?? '');
-                                    }
+                                    echo htmlspecialchars($row_sold_to);
                                 ?></td>
                                 <td><?php echo htmlspecialchars($delivery_date); ?></td>
                                 <td><?php echo htmlspecialchars($sold_to_month); ?></td>
@@ -1297,6 +1350,11 @@ $totalSold = count(array_filter($delivery_records, function($r) {
         // Records data from PHP for modals
         let recordsData = <?php echo json_encode($delivery_records); ?>;
 
+        function isRealSoldToValue(value) {
+            const normalized = String(value || '').trim().toLowerCase();
+            return normalized !== '' && normalized !== 'andison manila' && normalized !== 'to andison manila';
+        }
+
         function formatNumber(n) {
             return Number(n || 0).toLocaleString();
         }
@@ -1309,12 +1367,7 @@ $totalSold = count(array_filter($delivery_records, function($r) {
                     .map(r => (r.item_code || '').trim())
                     .filter(v => v !== '')
             ).size;
-            const totalSoldCount = recordsData.filter(r => {
-                const soldTo = (r.transferred_to === 'to Andison Manila')
-                    ? (r.company_name || '')
-                    : (r.sold_to || '');
-                return String(soldTo).trim() !== '';
-            }).length;
+            const totalSoldCount = recordsData.filter(r => isRealSoldToValue(r.sold_to)).length;
 
             const transferredEl = document.getElementById('statTotalTransferred');
             const unitsEl = document.getElementById('statTotalUnits');
@@ -1334,7 +1387,6 @@ $totalSold = count(array_filter($delivery_records, function($r) {
             const rows = tbody.querySelectorAll('tr');
             const hasRows = rows.length > 0;
             const tableResponsive = document.querySelector('.table-responsive');
-            const filterTabs = document.querySelector('.filter-tabs');
             const searchContainer = document.querySelector('.search-container');
             const countEl = document.getElementById('searchCount');
 
@@ -1342,7 +1394,6 @@ $totalSold = count(array_filter($delivery_records, function($r) {
 
             if (!hasRows) {
                 if (tableResponsive) tableResponsive.style.display = 'none';
-                if (filterTabs) filterTabs.style.display = 'none';
                 if (searchContainer) searchContainer.style.display = 'none';
                 if (countEl) countEl.textContent = 'Showing 0 records';
 
@@ -1358,7 +1409,6 @@ $totalSold = count(array_filter($delivery_records, function($r) {
             } else if (emptyState) {
                 emptyState.remove();
                 if (tableResponsive) tableResponsive.style.display = '';
-                if (filterTabs) filterTabs.style.display = '';
                 if (searchContainer) searchContainer.style.display = '';
             }
         }
@@ -1492,7 +1542,7 @@ $totalSold = count(array_filter($delivery_records, function($r) {
             document.getElementById('modalQty').textContent           = record.quantity || '';
             document.getElementById('modalUom').textContent           = record.uom || '';
             document.getElementById('modalSerialNo').textContent      = record.serial_no || '';
-            document.getElementById('modalSoldTo').textContent        = record.company_name || '';
+            document.getElementById('modalSoldTo').textContent        = isRealSoldToValue(record.sold_to) ? record.sold_to : '';
             document.getElementById('modalDeliveryDate').textContent  = deliveryDate;
             document.getElementById('modalSoldToMonth').textContent   = record.sold_to_month || '';
             document.getElementById('modalSoldToDay').textContent     = record.sold_to_day || '';
@@ -1591,10 +1641,7 @@ $totalSold = count(array_filter($delivery_records, function($r) {
             document.getElementById('edit_item_name').value     = record.item_name || '';
             // Always show "to Andison Manila" in the Transferred field
             document.getElementById('edit_company_name').value  = 'to Andison Manila';
-            // Resolve actual customer: new-style records store it in company_name, old-style in sold_to
-            const actualSoldTo = (record.transferred_to === 'to Andison Manila')
-                ? (record.company_name || '')
-                : (record.sold_to || '');
+            const actualSoldTo = isRealSoldToValue(record.sold_to) ? record.sold_to : '';
             document.getElementById('edit_sold_to').value       = actualSoldTo;
             document.getElementById('edit_quantity').value      = record.quantity || '';
             document.getElementById('edit_uom').value           = record.uom || '';
@@ -1695,46 +1742,67 @@ $totalSold = count(array_filter($delivery_records, function($r) {
         });
 
         // ===== FILTER TABS =====
-        let activeFilter = 'all';
+        let primaryFilter = 'all';
+        let groupingFilter = 'all';
 
-        function setFilter(filter) {
-            activeFilter = filter;
-            document.querySelectorAll('.filter-tab[data-filter]').forEach(button => {
-                button.classList.toggle('active', button.dataset.filter === filter);
+        function setPrimaryFilter(filter) {
+            primaryFilter = filter;
+            document.querySelectorAll('.filter-tab[data-primary-filter]').forEach(button => {
+                button.classList.toggle('active', button.dataset.primaryFilter === filter);
             });
+
+            // Reset free-text search when returning to All so rows are not accidentally hidden.
+            if (filter === 'all') {
+                const searchInput = document.getElementById('searchInput');
+                if (searchInput) searchInput.value = '';
+            }
+
+            searchTable();
+        }
+
+        function setGroupingFilter(filter) {
+            groupingFilter = String(filter || 'all').toLowerCase();
             searchTable();
         }
 
         // ===== SEARCH =====
         function searchTable() {
-            const filter = document.getElementById('searchInput').value.toLowerCase().trim();
-            const rows = document.querySelectorAll('table tbody tr');
+            const searchInput = document.getElementById('searchInput');
+            const filter = searchInput ? searchInput.value.toLowerCase().trim() : '';
+            const rows = Array.from(document.querySelectorAll('table tbody tr'));
             let count = 0;
-            const categoryFilters = ['1a', '1b', '2a', '3a', '4a'];
-            const hasActiveFilter = activeFilter !== 'all';
+            const hasGroupingFilter = groupingFilter !== 'all';
             rows.forEach(row => {
                 const text = row.textContent.toLowerCase();
                 const textMatch = filter === '' || text.includes(filter);
-                const salesMatch = activeFilter !== 'sales' || row.dataset.soldto === '1';
-                const categoryMatch = categoryFilters.includes(activeFilter)
-                    ? (row.dataset.grouping || '').trim().toLowerCase() === activeFilter
-                    : true;
-                const match = textMatch && salesMatch && categoryMatch;
+                const rowIsSales = row.dataset.soldto === '1';
+                const primaryMatch = primaryFilter === 'sales' ? rowIsSales : !rowIsSales;
+                const categoryMatch = !hasGroupingFilter
+                    || (row.dataset.grouping || '').trim().toLowerCase() === groupingFilter;
+                const match = textMatch && primaryMatch && categoryMatch;
                 row.style.display = match ? '' : 'none';
                 if (match) count++;
             });
-            const total = recordsData.length;
+            const primaryTotal = rows.filter(row => {
+                const rowIsSales = row.dataset.soldto === '1';
+                const primaryMatch = primaryFilter === 'sales' ? rowIsSales : !rowIsSales;
+                const categoryMatch = !hasGroupingFilter
+                    || (row.dataset.grouping || '').trim().toLowerCase() === groupingFilter;
+                return primaryMatch && categoryMatch;
+            }).length;
             const countEl = document.getElementById('searchCount');
             if (countEl) {
-                const label = activeFilter === 'sales'
-                    ? 'sales records'
-                    : (categoryFilters.includes(activeFilter) ? `${activeFilter.toUpperCase()} records` : 'records');
-                countEl.textContent = (filter || hasActiveFilter)
-                    ? `Showing ${count} of ${total} ${label}`
-                    : `Showing ${total} records`;
-                countEl.style.color = (filter || hasActiveFilter) ? '#0066cc' : '#666';
+                const modeLabel = primaryFilter === 'sales' ? 'sales' : 'all records';
+                const groupLabel = hasGroupingFilter ? ` (${groupingFilter.toUpperCase()})` : '';
+                countEl.textContent = filter
+                    ? `Showing ${count} of ${primaryTotal} ${modeLabel}${groupLabel}`
+                    : `Showing ${primaryTotal} ${modeLabel}${groupLabel}`;
+                countEl.style.color = (filter || hasGroupingFilter || primaryFilter === 'sales') ? '#0066cc' : '#666';
             }
         }
+
+        // Apply default tab logic on initial load.
+        searchTable();
 
         // ===== TOAST =====
         function showToast(message, type = 'success') {

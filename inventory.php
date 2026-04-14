@@ -1798,6 +1798,13 @@ if ($poItemsQuery) {
                     </li>
 
                     <li class="menu-item">
+                        <a href="warranty-replacements.php" class="menu-link">
+                            <i class="fas fa-wrench"></i>
+                            <span class="menu-label">Warranty Items</span>
+                        </a>
+                    </li>
+
+                    <li class="menu-item">
                         <a href="settings.php" class="menu-link">
                             <i class="fas fa-cog"></i>
                             <span class="menu-label">Settings</span>
@@ -1836,11 +1843,8 @@ if ($poItemsQuery) {
                         <?php endif; ?>
                     </form>
                 </div>
-                <button class="add-stock-btn" style="background: linear-gradient(135deg, #f4d03f 0%, #f9d76a 100%);" onclick="openAddItemModal()">
+                <button class="add-stock-btn" id="addNewItemBtn" style="background: linear-gradient(135deg, #f4d03f 0%, #f9d76a 100%);" onclick="openAddItemModal()">
                     <i class="fas fa-plus"></i> Add New Item
-                </button>
-                <button class="add-stock-btn" style="background: linear-gradient(135deg, #f4d03f 0%, #f9d76a 100%); display: none;" id="toggleCreateBtn">
-                    <i class="fas fa-plus"></i> Create Order
                 </button>
             </div>
 
@@ -2155,7 +2159,7 @@ if ($poItemsQuery) {
             <!-- Orders Tab Content -->
             <div id="orders-tab" class="tab-content">
                 <div style="margin-bottom: 20px;">
-                    <button class="add-stock-btn" style="background: linear-gradient(135deg, #f4d03f 0%, #f9d76a 100%);" onclick="document.getElementById('toggleCreateBtn').click()">
+                    <button class="add-stock-btn" style="background: linear-gradient(135deg, #f4d03f 0%, #f9d76a 100%);" onclick="openCreateOrderModal()">
                         <i class="fas fa-plus"></i> Create Purchase Order
                     </button>
                 </div>
@@ -2655,14 +2659,10 @@ if ($poItemsQuery) {
             document.getElementById(tabName).classList.add('active');
             evt.currentTarget.classList.add('active');
             
-            // Show/hide toggleCreateBtn based on active tab
-            const toggleCreateBtn = document.getElementById('toggleCreateBtn');
-            if (toggleCreateBtn) {
-                if (tabName === 'orders-tab') {
-                    toggleCreateBtn.style.display = 'inline-flex';
-                } else {
-                    toggleCreateBtn.style.display = 'none';
-                }
+            // Hide Add New Item button while viewing Purchase Orders tab.
+            const addNewItemBtn = document.getElementById('addNewItemBtn');
+            if (addNewItemBtn) {
+                addNewItemBtn.style.display = (tabName === 'orders-tab') ? 'none' : 'inline-flex';
             }
         }
 
@@ -4422,7 +4422,7 @@ if ($poItemsQuery) {
             productRow.className = 'product-row';
             productRow.style.cssText = `
                 display: grid;
-                grid-template-columns: repeat(5, 1fr) auto;
+                grid-template-columns: repeat(6, 1fr) auto;
                 gap: 10px;
                 padding: 12px;
                 border: 1px solid rgba(255,255,255,0.1);
@@ -4444,6 +4444,10 @@ if ($poItemsQuery) {
                     <datalist id="${nameListId}">
                         ${buildNameOptionsHtml()}
                     </datalist>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; color: #aaa; margin-bottom: 4px; display: block;">Serial No.</label>
+                    <input type="text" name="products[${rowIndex}][serial_no]" placeholder="Optional" style="padding: 10px; border-radius: 6px; border: 1px solid rgba(244,208,63,0.25); background: rgba(30,42,56,0.6); color: #fff; font-size: 13px;">
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                     <label style="font-size: 12px; color: #aaa; margin-bottom: 4px; display: block;">Qty</label>
@@ -4496,10 +4500,12 @@ if ($poItemsQuery) {
             document.body.style.overflow = '';
         }
 
-        if (toggleCreateBtn && createOrderModal) {
-            toggleCreateBtn.addEventListener('click', function () {
-                openCreateOrderModal();
-            });
+        if (createOrderModal) {
+            if (toggleCreateBtn) {
+                toggleCreateBtn.addEventListener('click', function () {
+                    openCreateOrderModal();
+                });
+            }
 
             if (closeCreateBtn) {
                 closeCreateBtn.addEventListener('click', closeCreateOrderModal);

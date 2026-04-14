@@ -87,6 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     $itemName = trim($_POST['item_name'] ?? '');
     $category = trim($_POST['category'] ?? '');
     $quantity = max(1, intval($_POST['quantity'] ?? 1));
+    $unitPrice = floatval($_POST['unit_price'] ?? 0);
     $poNumber = trim($_POST['po_number'] ?? '');
     $poStatus = trim($_POST['po_status'] ?? 'No PO');
     $notes = trim($_POST['notes'] ?? '');
@@ -141,8 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     }
     $soldTo = $customer;
     $datasetName = $selectedDataset !== 'all' ? $selectedDataset : '';
-    $unitPrice = 0;
-    $totalAmount = 0;
+    $totalAmount = $quantity * $unitPrice;
 
     $sql = "INSERT INTO delivery_records (
                 order_customer, order_date, delivery_month, delivery_day, delivery_year, delivery_date,
@@ -232,7 +232,7 @@ if ($countResult) {
 }
 
 $inquiries = [];
-$listSql = "SELECT id, order_customer, order_date, item_code, item_name, quantity, po_number, po_status, status, notes, groupings, highlight_color, cell_styles, created_at
+$listSql = "SELECT id, order_customer, order_date, item_code, item_name, quantity, unit_price, po_number, po_status, status, notes, groupings, highlight_color, cell_styles, created_at
             FROM delivery_records
             WHERE $where
             ORDER BY COALESCE(created_at, '1970-01-01 00:00:00') DESC, id DESC";
@@ -509,6 +509,7 @@ $canAddInquiry = is_inquiry_admin();
                     <li class="menu-item"><a href="models.php" class="menu-link"><i class="fas fa-cube"></i><span class="menu-label">Models</span></a></li>
                     <li class="menu-item"><a href="reports.php" class="menu-link"><i class="fas fa-file-alt"></i><span class="menu-label">Reports</span></a></li>
                     <li class="menu-item"><a href="upload-data.php" class="menu-link"><i class="fas fa-upload"></i><span class="menu-label">Upload Data</span></a></li>
+                    <li class="menu-item"><a href="warranty-replacements.php" class="menu-link"><i class="fas fa-wrench"></i><span class="menu-label">Warranty Items</span></a></li>
                     <li class="menu-item"><a href="settings.php" class="menu-link"><i class="fas fa-cog"></i><span class="menu-label">Settings</span></a></li>
                 </ul>
             </div>
@@ -564,6 +565,7 @@ $canAddInquiry = is_inquiry_admin();
                                 <th>Groupings</th>
                                 <th>Product</th>
                                 <th>Qty</th>
+                                <th>Peso Cost</th>
                                 <th>PO No.</th>
                                 <th>PO Status</th>
                                 <th>Status</th>
@@ -574,7 +576,7 @@ $canAddInquiry = is_inquiry_admin();
                         <tbody>
                             <?php if (empty($inquiries)): ?>
                                 <tr>
-                                    <td colspan="10"><div class="empty-state">No inquiry items found for the selected filter.</div></td>
+                                    <td colspan="11"><div class="empty-state">No inquiry items found for the selected filter.</div></td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($inquiries as $inquiry): ?>
@@ -627,6 +629,7 @@ $canAddInquiry = is_inquiry_admin();
                                             <div style="font-size: 12px; margin-top: 3px;<?php echo $itemCodeCss !== '' ? $itemCodeCss : 'color:#9fb1c5;'; ?>"><?php echo h($inquiry['item_code']); ?></div>
                                         </td>
                                         <td><?php echo number_format((int) ($inquiry['quantity'] ?? 0)); ?></td>
+                                        <td><?php echo 'PHP ' . number_format((float) ($inquiry['unit_price'] ?? 0), 2); ?></td>
                                         <td><?php echo $poNumber !== '' ? h($poNumber) : '<span style="color:#9fb1c5;">None</span>'; ?></td>
                                         <td><span class="badge <?php echo h($poClass); ?>"><?php echo h($poStatus === '' ? 'No PO' : $poStatus); ?></span></td>
                                         <td><span class="badge <?php echo h($poClass); ?>"><?php echo h($inquiry['status'] ?: 'Pending'); ?></span></td>
@@ -686,6 +689,10 @@ $canAddInquiry = is_inquiry_admin();
                         <div class="form-group">
                             <label for="quantity">Quantity</label>
                             <input id="quantity" name="quantity" type="number" min="1" value="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="unit_price">Peso Cost</label>
+                            <input id="unit_price" name="unit_price" type="number" min="0" step="0.01" value="0" placeholder="0.00">
                         </div>
                         <div class="form-group">
                             <label for="highlight_preset">Color Marker</label>

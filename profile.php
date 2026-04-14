@@ -244,6 +244,12 @@ if (empty($userEmail)) {
                         <span class="menu-label">Upload Data</span>
                     </a>
                 </li>
+                <li class="menu-item">
+                    <a href="warranty-replacements.php" class="menu-link">
+                        <i class="fas fa-wrench"></i>
+                        <span class="menu-label">Warranty Items</span>
+                    </a>
+                </li>
                     <li class="menu-item">
                         <a href="inquiry.php" class="menu-link">
                             <i class="fas fa-file-invoice"></i>

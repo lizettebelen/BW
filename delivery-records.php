@@ -439,9 +439,8 @@ if (empty($allItems)) {
         }
 
         tr.filtered-match {
-            outline: 2px solid rgba(244, 208, 63, 0.8);
-            outline-offset: -2px;
-            box-shadow: inset 0 0 0 1px rgba(255, 214, 10, 0.28);
+            outline: none;
+            box-shadow: none;
         }
         
         @media (max-width: 900px) {
@@ -542,8 +541,7 @@ if (empty($allItems)) {
         }
 
         tr.sheet-highlight {
-            outline: 1px solid var(--sheet-highlight-border, var(--sheet-highlight));
-            outline-offset: -1px;
+            outline: none;
         }
 
         tr.sheet-highlight td {
@@ -555,9 +553,8 @@ if (empty($allItems)) {
         }
 
         tr.new-record {
-            outline: 2px solid rgba(244, 208, 63, 0.35);
-            outline-offset: -2px;
-            box-shadow: inset 0 0 0 1px rgba(255, 214, 10, 0.22);
+            outline: none;
+            box-shadow: none;
         }
 
         tr.new-record td {
@@ -565,7 +562,7 @@ if (empty($allItems)) {
         }
 
         tr.new-record:hover td {
-            box-shadow: inset 0 0 0 9999px rgba(255, 214, 10, 0.06);
+            box-shadow: none;
         }
 
         .new-pill {
@@ -1538,6 +1535,14 @@ if (empty($allItems)) {
                     </a>
                 </li>
 
+                <!-- Warranty Items -->
+                <li class="menu-item">
+                    <a href="warranty-replacements.php" class="menu-link">
+                        <i class="fas fa-wrench"></i>
+                        <span class="menu-label">Warranty Items</span>
+                    </a>
+                </li>
+
                 <!-- Settings -->
                 <li class="menu-item">
                     <a href="settings.php" class="menu-link">
@@ -1808,6 +1813,17 @@ if (empty($allItems)) {
                                     $bgColor = '#' . $bgColor;
                                 }
                                 $styles[] = 'background-color: ' . htmlspecialchars($bgColor, ENT_QUOTES) . ' !important';
+
+                                // Keep text readable when only background color is provided.
+                                if ($textColor === '') {
+                                    $hexColor = ltrim($bgColor, '#');
+                                    $r = hexdec(substr($hexColor, 0, 2));
+                                    $g = hexdec(substr($hexColor, 2, 2));
+                                    $b = hexdec(substr($hexColor, 4, 2));
+                                    $luminance = (0.2126 * $r) + (0.7152 * $g) + (0.0722 * $b);
+                                    $styles[] = 'color: ' . ($luminance > 160 ? '#111827' : '#FFFFFF') . ' !important';
+                                    $styles[] = 'font-weight: 600';
+                                }
                             }
 
                             if (preg_match('/^#?[0-9a-fA-F]{6}$/', $textColor)) {
@@ -3301,53 +3317,25 @@ if (empty($allItems)) {
 
         function rowMatchesColorFilter(row, filterValue) {
             const rowCategory = normalizeSheetCategory(row.getAttribute('data-category') || '');
-            const soldToText = String(row.getAttribute('data-sold-to') || '').toLowerCase();
-            const companyNameText = String(row.getAttribute('data-company-name') || '').toLowerCase();
-            const rowColors = getRowStyleColors(row);
-            const colorMatch = rowHasCategoryColor(rowColors, filterValue);
-            const rowTextColors = getRowTextColors(row);
-            const redTextMatch = rowHasCategoryColor(rowTextColors, 'red');
-
-            const cells = row.querySelectorAll('td');
-            const itemText = cells[3] ? cells[3].textContent.toLowerCase() : '';
-            const descriptionText = cells[4] ? cells[4].textContent.toLowerCase() : '';
-            const remarksText = cells[10] ? cells[10].textContent.toLowerCase() : '';
-            const combinedText = `${rowCategory} ${soldToText} ${companyNameText} ${itemText} ${descriptionText} ${remarksText}`;
-            const hasWarrantyToPurchaseMarker = rowCategory === 'warranty_to_purchase'
-                || combinedText.includes('warranty to purchase')
-                || combinedText.includes('swapping');
 
             switch (filterValue) {
                 case 'purple':
-                    return colorMatch || rowCategory === 'katay' || combinedText.includes('katay');
+                    return rowCategory === 'katay';
 
                 case 'yellow':
-                    // Yellow-sheet grouping is commonly represented by Sold To = to Andison Manila.
-                    return colorMatch
-                        || soldToText.includes('andison')
-                        || companyNameText.includes('andison')
-                        || combinedText.includes('send to andison')
-                        || combinedText.includes('send to andiso');
-
-                case 'teal':
-                    // Match uploaded sheet color first for teal-coded swapping rows.
-                    // Use text/category fallback only when no color metadata exists.
-                    if (rowColors.length > 0) {
-                        return colorMatch;
-                    }
-                    return hasWarrantyToPurchaseMarker;
+                    return rowCategory === 'send_to_andison';
 
                 case 'red':
-                    // Strict red-text filter: only rows with red text style are included.
-                    return redTextMatch;
+                    return rowCategory === 'warranty_to_purchase';
+
+                case 'teal':
+                    return rowCategory === 'warranty_replacement';
 
                 case 'pink':
-                    return colorMatch || rowCategory === 'purchase_to_warranty'
-                        || combinedText.includes('purchase to warranty')
-                        || /purchase\s+to\s+warranty/.test(combinedText);
+                    return rowCategory === 'purchase_to_warranty';
 
                 default:
-                    return colorMatch || rowCategory === filterValue;
+                    return false;
             }
         }
 
@@ -3357,12 +3345,7 @@ if (empty($allItems)) {
             'teal': '#14b8a6',
             'red': '#ef4444',
             'purple': '#7c3aed',
-            'pink': '#ec4899',
-            '1a': '#9ca3af',
-            '1b': '#9ca3af',
-            '2a': '#9ca3af',
-            '3a': '#9ca3af',
-            '4a': '#9ca3af'
+            'pink': '#ec4899'
         };
 
         let availableCategoryFilters = [];
@@ -3370,17 +3353,16 @@ if (empty($allItems)) {
 
         function formatCategoryLabel(value) {
             if (value === 'all') return 'All';
-            if (value === 'yellow') return 'Yellow';
-            if (value === 'teal') return 'Teal';
-            if (value === 'red') return 'Red';
-            if (value === 'purple') return 'Purple';
-            if (value === 'pink') return 'Pink';
-            if (['1a', '1b', '2a', '3a', '4a'].includes(value)) return String(value).toUpperCase();
+            if (value === 'purple') return 'Katay (Purple)';
+            if (value === 'yellow') return 'Send to Andison (Yellow)';
+            if (value === 'red') return 'Warranty to Purchase (Red Text)';
+            if (value === 'teal') return 'Warranty Replacement (Teal)';
+            if (value === 'pink') return 'Purchase ---> Warranty (Pink)';
             return String(value || '').replace(/_/g, ' ');
         }
 
         function initializeColorPicker() {
-            const categories = ['yellow', 'teal', 'red', 'purple', 'pink', '1a', '1b', '2a', '3a', '4a'];
+            const categories = ['purple', 'yellow', 'red', 'teal', 'pink'];
             availableCategoryFilters = categories;
             selectedCategoryFilters = Array.from(categories);
 

@@ -28,6 +28,10 @@ if (!$request || !isset($request['data'])) {
 
 $data = $request['data'];
 
+// Get warranty rows list from request (optional, 0-based indices)
+$warranty_rows = isset($request['warranty_rows']) && is_array($request['warranty_rows']) ? $request['warranty_rows'] : [];
+$warranty_rows_flipped = array_flip($warranty_rows); // For O(1) lookup
+
 if (empty($data)) {
     respond(['success' => false, 'message' => 'No data to import'], 400);
 }
@@ -232,6 +236,102 @@ function findPreservedHighlight($conn, string $datasetName, string $invoiceNo, s
         'highlight_color' => trim((string)($row['highlight_color'] ?? '')),
         'cell_styles' => trim((string)($row['cell_styles'] ?? '')),
     ];
+}
+
+/**
+ * Ensure warranty_replacements table exists
+ */
+function ensureWarrantyReplacementsTable($conn, bool $isMysql): void {
+    if ($isMysql) {
+        $sql = "CREATE TABLE IF NOT EXISTS warranty_replacements (
+            id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            delivery_record_id INT(11) DEFAULT NULL,
+            invoice_no VARCHAR(100) DEFAULT NULL,
+            delivery_month VARCHAR(20),
+            delivery_day INT(2),
+            delivery_year INT(4),
+            record_date DATE DEFAULT NULL,
+            delivery_date DATE DEFAULT NULL,
+            item_code VARCHAR(50),
+            item_name VARCHAR(255),
+            company_name VARCHAR(255),
+            sold_to VARCHAR(255) DEFAULT NULL,
+            quantity INT(11) NOT NULL DEFAULT 0,
+            status VARCHAR(50) NOT NULL DEFAULT 'Warranty Pending',
+            uom VARCHAR(20) DEFAULT NULL,
+            serial_no VARCHAR(150) DEFAULT NULL,
+            transferred_to VARCHAR(255) DEFAULT NULL,
+            notes TEXT DEFAULT NULL,
+            warranty_flag TINYINT(1) DEFAULT 1,
+            warranty_date DATE DEFAULT NULL,
+            red_text_detected TINYINT(1) DEFAULT 1,
+            dataset_name VARCHAR(50) DEFAULT NULL,
+            highlight_color VARCHAR(20) DEFAULT NULL,
+            cell_styles LONGTEXT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY `idx_delivery_record_id` (`delivery_record_id`),
+            KEY `idx_warranty_flag` (`warranty_flag`),
+            KEY `idx_warranty_date` (`warranty_date`),
+            KEY `idx_item_code` (`item_code`),
+            KEY `idx_company_name` (`company_name`),
+            CONSTRAINT `fk_warranty_delivery_record` FOREIGN KEY (`delivery_record_id`) 
+                REFERENCES `delivery_records` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    } else {
+        $sql = "CREATE TABLE IF NOT EXISTS warranty_replacements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            delivery_record_id INTEGER DEFAULT NULL,
+            invoice_no VARCHAR(100) DEFAULT NULL,
+            delivery_month VARCHAR(20),
+            delivery_day INTEGER,
+            delivery_year INTEGER,
+            record_date DATE DEFAULT NULL,
+            delivery_date DATE DEFAULT NULL,
+            item_code VARCHAR(50),
+            item_name VARCHAR(255),
+            company_name VARCHAR(255),
+            sold_to VARCHAR(255) DEFAULT NULL,
+            quantity INTEGER NOT NULL DEFAULT 0,
+            status VARCHAR(50) NOT NULL DEFAULT 'Warranty Pending',
+            uom VARCHAR(20) DEFAULT NULL,
+            serial_no VARCHAR(150) DEFAULT NULL,
+            transferred_to VARCHAR(255) DEFAULT NULL,
+            notes TEXT DEFAULT NULL,
+            warranty_flag INTEGER DEFAULT 1,
+            warranty_date DATE DEFAULT NULL,
+            red_text_detected INTEGER DEFAULT 1,
+            dataset_name VARCHAR(50) DEFAULT NULL,
+            highlight_color VARCHAR(20) DEFAULT NULL,
+            cell_styles TEXT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )";
+    }
+
+    $conn->query($sql);
+
+    // Backward-compatible migration: older tables may not have invoice_no yet.
+    if ($isMysql) {
+        $check = $conn->query("SHOW COLUMNS FROM warranty_replacements LIKE 'invoice_no'");
+        if ($check && $check->num_rows === 0) {
+            $conn->query("ALTER TABLE warranty_replacements ADD COLUMN invoice_no VARCHAR(100) DEFAULT NULL AFTER delivery_record_id");
+        }
+    } else {
+        $hasInvoiceNo = false;
+        $pragma = $conn->query("PRAGMA table_info(warranty_replacements)");
+        if ($pragma) {
+            while ($col = $pragma->fetch_assoc()) {
+                if (isset($col['name']) && strtolower((string)$col['name']) === 'invoice_no') {
+                    $hasInvoiceNo = true;
+                    break;
+                }
+            }
+        }
+        if (!$hasInvoiceNo) {
+            $conn->query("ALTER TABLE warranty_replacements ADD COLUMN invoice_no VARCHAR(100) DEFAULT NULL");
+        }
+    }
 }
 
 // Column mapping - maps various Excel column names to database fields
@@ -455,6 +555,7 @@ try {
     if (empty($dataset_name)) $dataset_name = 'data1';
 
     ensureHighlightMemoryTable($conn, $isMysql);
+    ensureWarrantyReplacementsTable($conn, $isMysql);
 
     // Detect all columns from the uploaded data and auto-create missing ones
     $all_columns_in_data = [];
@@ -535,6 +636,7 @@ try {
     $imported_count = 0;
     $failed_count   = 0;
     $skipped_count  = 0;
+    $warranty_inserted_count = 0;
     $errors  = [];
     $skipped = [];
 
@@ -569,6 +671,10 @@ try {
             $uom = isset($mapped['uom']) ? trim(strval($mapped['uom'])) : '';
             // Year starts at 0; will be filled from explicit YEAR column, delivery_date, or current year
             $year = isset($mapped['year']) ? intval($mapped['year']) : 0;
+            
+            // Initialize warranty flags
+            $warranty_flag = 1; // Default to warranty (1=yes)
+            $red_text_detected = isset($warranty_rows_flipped[$index]) ? 1 : 0; // 1 if red text detected, 0 otherwise
             
             // Handle dates
             $record_date = null;
@@ -865,6 +971,61 @@ try {
                     }
                 }
                 
+                // Handle warranty records - check if this row index is in warranty_rows
+                if ($last_id > 0 && isset($warranty_rows_flipped[$index])) {
+                    // This row is marked as warranty, insert into warranty_replacements table
+                    $warranty_date = date('Y-m-d'); // Today's date
+                    $status_warranty = 'Warranty Pending'; // Set warranty-specific status
+                    
+                    $warranty_sql = "INSERT INTO warranty_replacements 
+                        (delivery_record_id, invoice_no, serial_no, delivery_month, delivery_day, delivery_year, record_date, delivery_date, 
+                         item_code, item_name, company_name, sold_to, quantity, status, highlight_color, cell_styles, notes, uom, 
+                         dataset_name, warranty_flag, warranty_date, red_text_detected)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    
+                    $warranty_stmt = $conn->prepare($warranty_sql);
+                    if ($warranty_stmt) {
+                        $warranty_stmt->bind_param(
+                            'issiiisssssissssssisi',
+                            $last_id,
+                            $invoice_no,
+                            $serial_no,
+                            $delivery_month,
+                            $delivery_day,
+                            $year,
+                            $record_date,
+                            $delivery_date,
+                            $item_code,
+                            $item_name,
+                            $company_name,
+                            $sold_to,
+                            $quantity,
+                            $status_warranty,
+                            $highlight_color,
+                            $cell_styles,
+                            $notes,
+                            $uom,
+                            $dataset_name,
+                            $warranty_flag,
+                            $warranty_date,
+                            $red_text_detected
+                        );
+                        
+                        // Initialize warranty flag variables if not set
+                        if (!isset($warranty_flag)) $warranty_flag = 1;
+                        if (!isset($red_text_detected)) $red_text_detected = 1;
+                        
+                        if (!$warranty_stmt->execute()) {
+                            $errors[] = "Row " . ($index + 2) . ": warranty insert failed: " . $warranty_stmt->error;
+                        } else {
+                            $warranty_inserted_count++;
+                        }
+                        $warranty_stmt->close();
+                    } else {
+                        $errors[] = "Row " . ($index + 2) . ": warranty prepare failed: " . ($conn->error ?? 'unknown error');
+                    }
+                }
+                
                 // Insert unmapped column data
                 if ($last_id > 0) {
                     foreach ($record as $col => $value) {
@@ -919,6 +1080,8 @@ try {
         'imported' => $imported_count,
         'failed'   => $failed_count,
         'skipped'  => $skipped_count,
+        'warranty_rows_received' => count($warranty_rows),
+        'warranty_inserted' => $warranty_inserted_count,
         'total'    => count($data),
         'message'  => "Successfully imported $imported_count records"
     ];

@@ -31,6 +31,22 @@ try {
         }
     }
 
+    // Include legacy/manual records with no dataset tag so they can be managed/deleted too.
+    $unassignedCount = 0;
+    $unassignedResult = $conn->query("SELECT COUNT(*) AS record_count FROM delivery_records WHERE dataset_name IS NULL OR TRIM(dataset_name) = ''");
+    if ($unassignedResult) {
+        $unassignedRow = $unassignedResult->fetch_assoc();
+        $unassignedCount = isset($unassignedRow['record_count']) ? intval($unassignedRow['record_count']) : 0;
+    }
+    if ($unassignedCount > 0) {
+        $datasets[] = [
+            'name' => '__UNASSIGNED__',
+            'label' => 'Unassigned / Manual Records',
+            'count' => $unassignedCount,
+            'is_unassigned' => true
+        ];
+    }
+
     // Determine next available dataset number
     $maxNum = 0;
     foreach ($datasets as $ds) {

@@ -142,11 +142,17 @@ try {
         if (empty($datasetName)) {
             throw new Exception('dataset_name is required');
         }
-        
-        $preservedHighlights = preserveDatasetHighlights($conn, $datasetName);
 
-        $stmt = $conn->prepare("DELETE FROM delivery_records WHERE dataset_name = ?");
-        $stmt->bind_param('s', $datasetName);
+        $isUnassignedDataset = ($datasetName === '__UNASSIGNED__');
+        $preservedHighlights = 0;
+
+        if ($isUnassignedDataset) {
+            $stmt = $conn->prepare("DELETE FROM delivery_records WHERE dataset_name IS NULL OR TRIM(dataset_name) = ''");
+        } else {
+            $preservedHighlights = preserveDatasetHighlights($conn, $datasetName);
+            $stmt = $conn->prepare("DELETE FROM delivery_records WHERE dataset_name = ?");
+            $stmt->bind_param('s', $datasetName);
+        }
         
         if (!$stmt->execute()) {
             throw new Exception('Failed to delete dataset');
@@ -157,10 +163,12 @@ try {
         if ($affected <= 0) {
             throw new Exception("Dataset '$datasetName' was not found or already deleted");
         }
+
+        $deletedDatasetLabel = $isUnassignedDataset ? 'Unassigned / Manual Records' : $datasetName;
         
         echo json_encode([
             'success' => true,
-            'message' => "Deleted dataset '$datasetName' ($affected records removed)",
+            'message' => "Deleted dataset '$deletedDatasetLabel' ($affected records removed)",
             'refresh_required' => true,
             'deleted_dataset' => $datasetName,
             'preserved_highlights' => $preservedHighlights
