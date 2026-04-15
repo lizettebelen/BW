@@ -34,7 +34,11 @@ $result = $conn->query("
         groupings,
         status
     FROM delivery_records
-    WHERE (company_name = '{$companyName}' OR transferred_to = '{$companyName}')
+    WHERE (
+        company_name = '{$companyName}'
+        OR transferred_to = '{$companyName}'
+        OR LOWER(TRIM(COALESCE(sold_to, ''))) IN ('andison manila', 'to andison manila')
+    )
     ORDER BY delivery_year DESC, delivery_month DESC, delivery_day DESC
 ");
 
@@ -77,6 +81,25 @@ $totalSold = count(array_filter($delivery_records, function($r) use ($isRealSold
     <script src="https://cdn.jsdelivr.net/npm/@dotlottie/web-component@latest/dist/dotlottie-wc.js"></script>
     <link rel="stylesheet" href="css/style.css">
     <style>
+        .dashboard-wrapper {
+            display: flex;
+            margin-top: 70px;
+            min-height: calc(100vh - 70px);
+        }
+
+        .sidebar {
+            width: 250px;
+            flex-shrink: 0;
+        }
+
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            margin-left: 0;
+            margin-top: 0;
+            min-height: auto;
+        }
+
         .andison-container {
             width: 100%;
             margin: 0 auto;
@@ -871,6 +894,7 @@ $totalSold = count(array_filter($delivery_records, function($r) use ($isRealSold
                         <option value="1a">1A</option>
                         <option value="1b">1B</option>
                         <option value="2a">2A</option>
+                        <option value="2b">2B</option>
                         <option value="3a">3A</option>
                         <option value="4a">4A</option>
                     </select>
@@ -1074,6 +1098,7 @@ $totalSold = count(array_filter($delivery_records, function($r) use ($isRealSold
                             <option value="1A" selected>1A</option>
                             <option value="1B">1B</option>
                             <option value="2A">2A</option>
+                            <option value="2B">2B</option>
                             <option value="3A">3A</option>
                             <option value="4A">4A</option>
                         </select>
@@ -1306,6 +1331,7 @@ $totalSold = count(array_filter($delivery_records, function($r) use ($isRealSold
                             <option value="1A">1A</option>
                             <option value="1B">1B</option>
                             <option value="2A">2A</option>
+                            <option value="2B">2B</option>
                             <option value="3A">3A</option>
                             <option value="4A">4A</option>
                         </select>

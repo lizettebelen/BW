@@ -28,6 +28,115 @@ function isLegendMarkerRow(array $row): bool {
         && (strpos($serialNo, 'purchase') !== false && strpos($serialNo, 'warranty') !== false);
 }
 
+function isAndisonManilaRow(array $row): bool {
+    $normalizedValues = [
+        strtolower(trim((string) ($row['company_name'] ?? ''))),
+        strtolower(trim((string) ($row['transferred_to'] ?? ''))),
+        strtolower(trim((string) ($row['sold_to'] ?? ''))),
+    ];
+
+    foreach ($normalizedValues as $value) {
+        if ($value === 'andison manila' || $value === 'to andison manila') {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function inferTypeLabelFromHighlightColor(string $rawColor): string {
+    $value = trim($rawColor);
+    if (!preg_match('/^#?[0-9a-fA-F]{6}$/', $value)) {
+        return '';
+    }
+
+    if ($value[0] !== '#') {
+        $value = '#' . $value;
+    }
+
+    $toRgb = function(string $hex): array {
+        $h = strtoupper(ltrim($hex, '#'));
+        return [
+            hexdec(substr($h, 0, 2)),
+            hexdec(substr($h, 2, 2)),
+            hexdec(substr($h, 4, 2)),
+        ];
+    };
+
+    $distance = function(array $a, array $b): float {
+        $dr = $a[0] - $b[0];
+        $dg = $a[1] - $b[1];
+        $db = $a[2] - $b[2];
+        return sqrt(($dr * $dr) + ($dg * $dg) + ($db * $db));
+    };
+
+    $palette = [
+        'send to andison (yellow)' => ['#FACC15', '#FFF2CC', '#FFF59D', '#FDE68A', '#F4D03F', '#E8EC8C', '#E7EB89', '#E5EA83', '#E3E97D'],
+        'Warranty Replacement (Teal)' => ['#14B8A6', '#B7DEE8', '#A7E3DE', '#9DD9D2', '#4BACC6'],
+        'warranty to purchase (red text)' => ['#EF4444', '#FF0000', '#DC2626', '#FFC7CE', '#F8CBAD', '#F4AAAA', '#C0504D'],
+        'Katay (Purple)' => ['#7C3AED', '#D9B3D9', '#D7BDE2', '#CFA8D8', '#8064A2'],
+        'Purchase ---> Warranty (Pink)' => ['#EC4899', '#E79CC8', '#F4B6D7', '#F8C8DC', '#FF99CC'],
+    ];
+
+    $source = $toRgb($value);
+    $bestLabel = '';
+    $bestDistance = PHP_FLOAT_MAX;
+
+    foreach ($palette as $label => $swatches) {
+        foreach ($swatches as $swatch) {
+            $current = $distance($source, $toRgb($swatch));
+            if ($current < $bestDistance) {
+                $bestDistance = $current;
+                $bestLabel = $label;
+            }
+        }
+    }
+
+    return $bestDistance <= 145 ? $bestLabel : '';
+}
+
+function getDeliveryRecordTypeToken(array $row): string {
+    $groupings = strtolower(trim((string) ($row['groupings'] ?? '')));
+
+    if ($groupings === '') {
+        return 'unclassified';
+    }
+
+    if (strpos($groupings, 'katay') !== false) return 'purple';
+    if (strpos($groupings, 'send to andison') !== false || strpos($groupings, 'send to andiso') !== false) return 'yellow';
+    if (strpos($groupings, 'warranty to purchase') !== false) return 'red';
+    if (strpos($groupings, 'warranty replacement') !== false || strpos($groupings, '3a') !== false) return 'teal';
+    if (strpos($groupings, 'purchase to warranty') !== false) return 'pink';
+
+    return $groupings;
+}
+
+function getDeliveryRecordTypeLabel(array $row): string {
+    $groupings = strtolower(trim((string) ($row['groupings'] ?? '')));
+
+    if (strpos($groupings, 'katay') !== false) return 'Katay (Purple)';
+    if (strpos($groupings, 'send to andison') !== false || strpos($groupings, 'send to andiso') !== false) return 'send to andison (yellow)';
+    if (strpos($groupings, 'warranty to purchase') !== false) return 'warranty to purchase (red text)';
+    if (strpos($groupings, 'warranty replacement') !== false || strpos($groupings, '3a') !== false) return 'Warranty Replacement (Teal)';
+    if (strpos($groupings, 'purchase to warranty') !== false) return 'Purchase ---> Warranty (Pink)';
+
+    // Keep Type non-empty for code-based groupings by mapping them to a canonical filterable Type.
+    if (strpos($groupings, '1a') !== false
+        || strpos($groupings, '1b') !== false
+        || strpos($groupings, '2a') !== false
+        || strpos($groupings, '2b') !== false
+        || strpos($groupings, '4a') !== false) {
+        return 'send to andison (yellow)';
+    }
+
+    $fromHighlight = inferTypeLabelFromHighlightColor((string) ($row['highlight_color'] ?? ''));
+    if ($fromHighlight !== '') {
+        return $fromHighlight;
+    }
+
+    return 'Warranty Replacement (Teal)';
+}
+
 // Get selected dataset from URL parameter or session
 $selected_dataset = isset($_GET['dataset']) ? trim($_GET['dataset']) : (isset($_SESSION['active_dataset']) ? $_SESSION['active_dataset'] : 'all');
 
@@ -43,8 +152,12 @@ if ($selected_dataset !== 'all' && $selected_dataset !== '') {
     $dataset_filter = " AND dataset_name = '$safe_dataset'";
 }
 
-// Delivery Records page should never include inquiry/order staging rows.
-$delivery_where = "company_name != 'Orders'";
+// Delivery Records page should never include inquiry/order staging rows or Andison Manila transfers.
+$delivery_where = "company_name != 'Orders' AND NOT (
+    LOWER(TRIM(COALESCE(company_name, ''))) IN ('andison manila', 'to andison manila')
+    OR LOWER(TRIM(COALESCE(transferred_to, ''))) IN ('andison manila', 'to andison manila')
+    OR LOWER(TRIM(COALESCE(sold_to, ''))) IN ('andison manila', 'to andison manila')
+)";
 
 // Get statistics from database
 $stats = [
@@ -1621,10 +1734,10 @@ if (empty($allItems)) {
             </button>
         </div>
 
-        <!-- Filters: Color Picker UI -->
+        <!-- Grouping Filters -->
         <div class="filters" id="colorFilters">
             <div class="filter-panel">
-                <label class="filter-title"><i class="fas fa-filter"></i> Filter</label>
+                <label class="filter-title"><i class="fas fa-filter"></i> Filter Groupings</label>
                 <div class="filter-dropdown" id="categoryFilterDropdown">
                     <button type="button" class="filter-toggle-btn" id="categoryFilterToggle" onclick="toggleCategoryFilterDropdown()">
                         <span id="categoryFilterSummary">All filters</span>
@@ -1639,7 +1752,7 @@ if (empty($allItems)) {
                             </div>
                         </div>
                         <div class="filter-dropdown-options" id="colorPickerContainer">
-                            <!-- Category options are inserted by JS -->
+                            <!-- Filter options are inserted by JS -->
                         </div>
                     </div>
                 </div>
@@ -1699,8 +1812,7 @@ if (empty($allItems)) {
                         $hidden_class = ($row_index >= 30) ? 'hidden-row' : '';
                         
                         // Check if this is Andison Manila (old records: company_name; new records: transferred_to)
-                        $is_andison = (isset($record['company_name']) && $record['company_name'] === 'to Andison Manila')
-                                   || (isset($record['transferred_to']) && $record['transferred_to'] === 'to Andison Manila');
+                        $is_andison = isAndisonManilaRow($record);
                         $andison_class = $is_andison ? 'andison-manila-row' : '';
                         // Keep Sold To output aligned with uploaded sheets.
                         // For Andison-routed rows, show literal "to Andison Manila".
@@ -1710,6 +1822,8 @@ if (empty($allItems)) {
                         } elseif (!empty($record['company_name']) && trim((string) $record['company_name']) !== '-') {
                             $display_sold_to = trim((string) $record['company_name']);
                         }
+                        $typeToken = getDeliveryRecordTypeToken($record);
+                        $typeLabel = getDeliveryRecordTypeLabel($record);
 
                         $statusText = trim((string) ($record['status'] ?? 'Pending'));
                         if ($statusText === '') {
@@ -1841,7 +1955,7 @@ if (empty($allItems)) {
                             return ' style="' . implode('; ', $styles) . ';"';
                         };
                     ?>
-                    <tr data-record-id="<?php echo htmlspecialchars($record['id'] ?? ''); ?>" data-row-index="<?php echo $row_index; ?>" data-dataset="<?php echo htmlspecialchars($record['dataset_name'] ?? '', ENT_QUOTES); ?>" data-sold-to="<?php echo htmlspecialchars($display_sold_to, ENT_QUOTES); ?>" data-company-name="<?php echo htmlspecialchars((string) ($record['company_name'] ?? ''), ENT_QUOTES); ?>" data-created-at="<?php echo htmlspecialchars((string) ($record['created_at'] ?? '')); ?>" data-status="<?php echo htmlspecialchars($statusText); ?>" data-category="<?php echo htmlspecialchars(strtolower(trim((string) ($record['groupings'] ?? '')))); ?>" data-highlight-color="<?php echo htmlspecialchars($highlightColor, ENT_QUOTES); ?>" data-cell-styles="<?php echo htmlspecialchars((string) ($record['cell_styles'] ?? ''), ENT_QUOTES); ?>" class="<?php echo trim($hidden_class . ' ' . $andison_class . ' ' . $highlightClass . ' ' . ($is_new_record ? 'new-record' : '')); ?>"<?php echo $highlightStyle; ?>>
+                    <tr data-record-id="<?php echo htmlspecialchars($record['id'] ?? ''); ?>" data-row-index="<?php echo $row_index; ?>" data-dataset="<?php echo htmlspecialchars($record['dataset_name'] ?? '', ENT_QUOTES); ?>" data-sold-to="<?php echo htmlspecialchars($display_sold_to, ENT_QUOTES); ?>" data-company-name="<?php echo htmlspecialchars((string) ($record['company_name'] ?? ''), ENT_QUOTES); ?>" data-created-at="<?php echo htmlspecialchars((string) ($record['created_at'] ?? '')); ?>" data-status="<?php echo htmlspecialchars($statusText); ?>" data-category="<?php echo htmlspecialchars(strtolower(trim((string) ($record['groupings'] ?? '')))); ?>" data-item-code="<?php echo htmlspecialchars((string) ($record['item_code'] ?? ''), ENT_QUOTES); ?>" data-item-name="<?php echo htmlspecialchars((string) ($record['item_name'] ?? ''), ENT_QUOTES); ?>" data-invoice-no="<?php echo htmlspecialchars((string) ($record['invoice_no'] ?? ''), ENT_QUOTES); ?>" data-serial-no="<?php echo htmlspecialchars((string) ($record['serial_no'] ?? ''), ENT_QUOTES); ?>" data-quantity="<?php echo htmlspecialchars((string) ($record['quantity'] ?? ''), ENT_QUOTES); ?>" data-uom="<?php echo htmlspecialchars((string) ($record['uom'] ?? ''), ENT_QUOTES); ?>" data-notes="<?php echo htmlspecialchars((string) ($record['notes'] ?? ''), ENT_QUOTES); ?>" data-highlight-color="<?php echo htmlspecialchars($highlightColor, ENT_QUOTES); ?>" data-cell-styles="<?php echo htmlspecialchars((string) ($record['cell_styles'] ?? ''), ENT_QUOTES); ?>" class="<?php echo trim($hidden_class . ' ' . $andison_class . ' ' . $highlightClass . ' ' . ($is_new_record ? 'new-record' : '')); ?>"<?php echo $highlightStyle; ?>>
                         <td<?php echo $cellStyleAttr('groupings'); ?>><?php echo htmlspecialchars($record['groupings'] ?? ''); ?></td>
                         <td<?php echo $cellStyleAttr('invoice_no'); ?>><?php echo htmlspecialchars($record['invoice_no'] ?? ''); ?><?php if ($is_new_record): ?><span class="new-pill">NEW</span><?php endif; ?></td>
                         <td<?php echo $cellStyleAttr('record_date'); ?>><?php echo htmlspecialchars($date_col); ?></td>
@@ -2862,9 +2976,23 @@ if (empty($allItems)) {
                         if (!rowSoldToDisplay) {
                             rowSoldToDisplay = rowCompanyName;
                         }
+                        const rowTypeTokens = (() => {
+                            const groupings = String(newRecord.groupings || '').trim().toLowerCase();
+                            const tokens = [];
+
+                            if (groupings.includes('katay')) tokens.push('purple');
+                            if (groupings.includes('send to andison') || groupings.includes('send to andiso')) tokens.push('yellow');
+                            if (groupings.includes('warranty to purchase')) tokens.push('red');
+                            if (groupings.includes('warranty replacement') || groupings.includes('3a')) tokens.push('teal');
+                            if (groupings.includes('purchase to warranty')) tokens.push('pink');
+
+                            return Array.from(new Set(tokens)).join(' ');
+                        })();
+                        const rowTypeLabel = '';
                         newRow.setAttribute('data-created-at', createdAtValue);
                         newRow.setAttribute('data-status', rowStatus);
                         newRow.setAttribute('data-category', rowCategory);
+                        newRow.setAttribute('data-type-token', rowTypeTokens);
                         newRow.setAttribute('data-highlight-color', rowHighlightColor);
                         newRow.setAttribute('data-company-name', rowCompanyName);
                         newRow.setAttribute('data-sold-to', rowSoldToDisplay);
@@ -3113,6 +3241,14 @@ if (empty($allItems)) {
             value = value.replace(/[()]/g, ' ');
             value = value.replace(/\s+/g, ' ').trim();
 
+            if (value.includes('1a') && (value.includes('bw knit') || value.includes('serial no') || value.includes('serial'))) return '1a_bw_knit_serial';
+            if (value.includes('1b') && value.includes('accessories')) return '1b_accessories';
+            if (value.includes('2a') && (value.includes('rae unit') || value.includes('serial no') || value.includes('serial'))) return '2a_rae_unit_serial';
+            if (value.includes('2b') && value.includes('accessories')) return '2b_rae_accessories';
+            if (value.includes('3a') && value.includes('warranty replacement')) return '3a_warranty_replacement';
+            if (value.includes('4a') && value.includes('calibration gas')) return '4a_calibration_gas_regulator';
+            if (value.includes('no sales record') && value.includes('1a')) return 'no_sales_record_1a';
+
             if (value.includes('katay')) return 'katay';
             if (value.includes('send to andison') || value.includes('send to andiso')) return 'send_to_andison';
             if (value.includes('warranty replacemer') || value.includes('warranty replacement')) return 'warranty_replacement';
@@ -3315,24 +3451,60 @@ if (empty($allItems)) {
             });
         }
 
+        function getRowDataValue(row, key) {
+            return String(row.getAttribute(`data-${key}`) || '').trim().toLowerCase();
+        }
+
+        function rowHasSerialNumber(row) {
+            const serialNo = getRowDataValue(row, 'serial-no');
+            return serialNo !== '' && serialNo !== '-' && serialNo !== 'n/a' && serialNo !== 'na';
+        }
+
+        function rowHasNoSalesRecord(row) {
+            const soldTo = getRowDataValue(row, 'sold-to');
+            return soldTo === '' || soldTo === '-' || soldTo === 'n/a' || soldTo === 'na';
+        }
+
         function rowMatchesColorFilter(row, filterValue) {
-            const rowCategory = normalizeSheetCategory(row.getAttribute('data-category') || '');
+            const rowTypeLabel = getRowDataValue(row, 'type-label');
+            const rowCategoryRaw = getRowDataValue(row, 'category');
+            const rowCategory = normalizeSheetCategory(rowCategoryRaw);
+            const labelMap = {
+                purple: 'katay (purple)',
+                yellow: 'send to andison (yellow)',
+                red: 'warranty to purchase (red text)',
+                teal: 'warranty replacement (teal)',
+                pink: 'purchase ---> warranty (pink)'
+            };
 
             switch (filterValue) {
                 case 'purple':
-                    return rowCategory === 'katay';
-
                 case 'yellow':
-                    return rowCategory === 'send_to_andison';
-
                 case 'red':
-                    return rowCategory === 'warranty_to_purchase';
-
                 case 'teal':
-                    return rowCategory === 'warranty_replacement';
-
                 case 'pink':
-                    return rowCategory === 'purchase_to_warranty';
+                    return rowTypeLabel === (labelMap[filterValue] || '');
+
+                case '1a_bw_knit_serial':
+                    return (rowCategory === '1a_bw_knit_serial' || rowCategoryRaw === '1a') && rowHasSerialNumber(row);
+
+                case '1b_accessories':
+                    return rowCategory === '1b_accessories' || rowCategoryRaw === '1b';
+
+                case '2a_rae_unit_serial':
+                    return (rowCategory === '2a_rae_unit_serial' || rowCategoryRaw === '2a') && rowHasSerialNumber(row);
+
+                case '2b_rae_accessories':
+                    return rowCategory === '2b_rae_accessories' || rowCategoryRaw === '2b';
+
+                case '3a_warranty_replacement':
+                    return rowCategory === '3a_warranty_replacement' || rowCategoryRaw === '3a';
+
+                case '4a_calibration_gas_regulator':
+                    return rowCategory === '4a_calibration_gas_regulator' || rowCategoryRaw === '4a';
+
+                case 'no_sales_record_1a':
+                    return (rowCategory === 'no_sales_record_1a' || rowCategoryRaw === '1a') && rowHasNoSalesRecord(row);
 
                 default:
                     return false;
@@ -3341,11 +3513,13 @@ if (empty($allItems)) {
 
         // Color picker filter system
         const categoryColorMap = {
-            'yellow': '#facc15',
-            'teal': '#14b8a6',
-            'red': '#ef4444',
-            'purple': '#7c3aed',
-            'pink': '#ec4899'
+            '1a_bw_knit_serial': '#2563eb',
+            '1b_accessories': '#f59e0b',
+            '2a_rae_unit_serial': '#06b6d4',
+            '2b_rae_accessories': '#84cc16',
+            '3a_warranty_replacement': '#10b981',
+            '4a_calibration_gas_regulator': '#8b5cf6',
+            'no_sales_record_1a': '#6b7280'
         };
 
         let availableCategoryFilters = [];
@@ -3353,16 +3527,18 @@ if (empty($allItems)) {
 
         function formatCategoryLabel(value) {
             if (value === 'all') return 'All';
-            if (value === 'purple') return 'Katay (Purple)';
-            if (value === 'yellow') return 'Send to Andison (Yellow)';
-            if (value === 'red') return 'Warranty to Purchase (Red Text)';
-            if (value === 'teal') return 'Warranty Replacement (Teal)';
-            if (value === 'pink') return 'Purchase ---> Warranty (Pink)';
+            if (value === '1a_bw_knit_serial') return '1A - BW KNIT w/ Serial No.';
+            if (value === '1b_accessories') return '1B - ACCESSORIES';
+            if (value === '2a_rae_unit_serial') return '2A - RAE UNIT W/ SERIAL NO';
+            if (value === '2b_rae_accessories') return '2B - RAE ACCESSORIES';
+            if (value === '3a_warranty_replacement') return '3A - WARRANTY REPLACEMENT';
+            if (value === '4a_calibration_gas_regulator') return '4A - CALIBRATION GAS W/ NO AND REGULATOR';
+            if (value === 'no_sales_record_1a') return 'NO SALES RECORD - 1A';
             return String(value || '').replace(/_/g, ' ');
         }
 
         function initializeColorPicker() {
-            const categories = ['purple', 'yellow', 'red', 'teal', 'pink'];
+            const categories = ['1a_bw_knit_serial', '1b_accessories', '2a_rae_unit_serial', '2b_rae_accessories', '3a_warranty_replacement', '4a_calibration_gas_regulator', 'no_sales_record_1a'];
             availableCategoryFilters = categories;
             selectedCategoryFilters = Array.from(categories);
 

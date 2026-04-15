@@ -531,6 +531,14 @@ $groupings = [
                     </a>
                 </li>
 
+                <!-- Sales Records -->
+                <li class="menu-item">
+                    <a href="sales-records.php" class="menu-link">
+                        <i class="fas fa-calendar-alt"></i>
+                        <span class="menu-label">Sales Records</span>
+                    </a>
+                </li>
+
                 <li class="menu-item">
                     <a href="inquiry.php" class="menu-link">
                         <i class="fas fa-file-invoice"></i>
