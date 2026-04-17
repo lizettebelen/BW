@@ -177,6 +177,22 @@ if ($companies_result) {
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
+        .warranty-header-title {
+            margin: 0 0 5px 0;
+            color: #ffffff !important;
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.2;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+        }
+
+        .warranty-header-subtitle {
+            color: #d7e2ef !important;
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
         .warranty-stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -562,12 +578,12 @@ if ($companies_result) {
         <div class="warranty-container">
             <!-- Header -->
             <div class="warranty-header">
-                <h1 style="margin: 0 0 5px 0; color: #fff; font-size: 28px;">
-                    <i class="fas fa-wrench" style="color: #f4d03f; margin-right: 10px;"></i>
+                <h1 class="warranty-header-title" style="margin: 0 0 5px 0; color: #ffffff !important; font-size: 28px; font-weight: 700; line-height: 1.2; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);">
+                    <i class="fas fa-wrench" style="color: #f4d03f !important; margin-right: 10px;"></i>
                     Warranty Replacements
                 </h1>
-                <p style="color: #a0a0a0; margin: 0; font-size: 13px;">
-                    <i class="fas fa-info-circle" style="margin-right: 5px;"></i>
+                <p class="warranty-header-subtitle" style="color: #d7e2ef !important; margin: 0; font-size: 13px; line-height: 1.5;">
+                    <i class="fas fa-info-circle" style="margin-right: 5px; color: #d7e2ef !important;"></i>
                     Records flagged with RED text during import
                 </p>
             </div>

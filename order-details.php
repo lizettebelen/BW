@@ -15,6 +15,19 @@ function h($value) {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
+function identifyGrouping($itemName) {
+    $lowerName = strtolower($itemName);
+
+    if (strpos($lowerName, 'multi') !== false ||
+        strpos($lowerName, 'quattro') !== false ||
+        strpos($lowerName, 'quad') !== false ||
+        preg_match('/o2.*lel|lel.*o2/', $lowerName)) {
+        return 'Group B - Multi Gas';
+    }
+
+    return 'Group A - Single Gas';
+}
+
 $orderId = intval($_GET['id'] ?? 0);
 if ($orderId <= 0) {
     header('Location: orders.php', true, 302);
@@ -39,7 +52,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $foreignCost = trim($_POST['foreign_cost'] ?? '');
         $poNumber = trim($_POST['po_number'] ?? '');
         $poStatus = trim($_POST['po_status'] ?? 'No PO');
-        $status = trim($_POST['status'] ?? 'Pending');
         $notes = trim($_POST['notes'] ?? '');
 
         if ($supplier === '' || $orderDate === '' || $itemCode === '' || $itemName === '') {
@@ -57,11 +69,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'PO Number is required before setting PO Status to Received.'];
             header('Location: order-details.php?id=' . $orderId, true, 302);
             exit;
-        }
-
-        $allowedStatus = ['Pending', 'Ready for Delivery', 'In Transit', 'Delivered', 'Received'];
-        if (!in_array($status, $allowedStatus, true)) {
-            $status = 'Pending';
         }
 
         $dt = DateTime::createFromFormat('Y-m-d', $orderDate);
@@ -84,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $updateSql = "UPDATE delivery_records
                       SET order_customer = ?, order_date = ?, item_code = ?, item_name = ?,
                           quantity = ?, unit_price = ?, total_amount = ?, po_number = ?,
-                          po_status = ?, status = ?, notes = ?, delivery_month = ?,
+                          po_status = ?, notes = ?, delivery_month = ?,
                           delivery_day = ?, delivery_year = ?, delivery_date = ?, updated_at = CURRENT_TIMESTAMP
                       WHERE id = ? AND company_name = 'Orders'";
 
@@ -101,7 +108,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $totalAmount,
                 $poNumber,
                 $poStatus,
-                $status,
                 $notes,
                 $deliveryMonth,
                 $deliveryDay,
@@ -112,27 +118,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($stmt->execute()) {
                 if ($poStatus === 'Received') {
-                    $moveStmt = $conn->prepare("UPDATE delivery_records
-                                               SET company_name = 'Delivery Records',
-                                                   status = CASE
-                                                       WHEN status IS NULL OR status = '' OR status = 'Pending' THEN 'Ready for Delivery'
-                                                       ELSE status
-                                                   END,
-                                                   updated_at = CURRENT_TIMESTAMP
-                                               WHERE id = ? AND company_name = 'Orders'");
-                    if ($moveStmt) {
-                        $moveStmt->bind_param('i', $orderId);
-                        if ($moveStmt->execute()) {
-                            $_SESSION['order_detail_flash'] = ['type' => 'success', 'message' => 'Order marked as Received and moved to Delivery Records.'];
-                            $moveStmt->close();
-                            header('Location: delivery-records.php', true, 302);
-                            exit;
+                    $grouping = identifyGrouping($itemName);
+                    $uom = 'UNITS';
+                    $now = date('Y-m-d H:i:s');
+
+                    $checkStmt = $conn->prepare("SELECT id FROM delivery_records WHERE item_code = ? AND company_name = 'Stock Addition' LIMIT 1");
+                    if ($checkStmt) {
+                        $checkStmt->bind_param('s', $itemCode);
+                        $checkStmt->execute();
+                        $checkResult = $checkStmt->get_result();
+                        $itemExists = ($checkResult && $checkResult->num_rows > 0);
+                        $checkStmt->close();
+
+                        if ($itemExists) {
+                            $updateInvStmt = $conn->prepare("UPDATE delivery_records SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE item_code = ? AND company_name = 'Stock Addition'");
+                            if ($updateInvStmt) {
+                                $updateInvStmt->bind_param('is', $quantity, $itemCode);
+                                if (!$updateInvStmt->execute()) {
+                                    $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Order was updated but failed to update inventory: ' . $updateInvStmt->error];
+                                    $updateInvStmt->close();
+                                    header('Location: order-details.php?id=' . $orderId, true, 302);
+                                    exit;
+                                }
+                                $updateInvStmt->close();
+                            } else {
+                                $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Failed to prepare inventory update.'];
+                                header('Location: order-details.php?id=' . $orderId, true, 302);
+                                exit;
+                            }
+                        } else {
+                            $insertInvStmt = $conn->prepare("INSERT INTO delivery_records (delivery_month, delivery_day, delivery_year, item_code, item_name, quantity, company_name, status, groupings, uom, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'Stock Addition', 'Received', ?, ?, ?, ?)");
+                            if ($insertInvStmt) {
+                                $insertInvStmt->bind_param('siississss', $deliveryMonth, $deliveryDay, $deliveryYear, $itemCode, $itemName, $quantity, $grouping, $uom, $now, $now);
+                                if (!$insertInvStmt->execute()) {
+                                    $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Order was updated but failed to add inventory: ' . $insertInvStmt->error];
+                                    $insertInvStmt->close();
+                                    header('Location: order-details.php?id=' . $orderId, true, 302);
+                                    exit;
+                                }
+                                $insertInvStmt->close();
+                            } else {
+                                $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Failed to prepare inventory insert.'];
+                                header('Location: order-details.php?id=' . $orderId, true, 302);
+                                exit;
+                            }
                         }
-                        $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Order was updated but failed to move to Delivery Records.'];
-                        $moveStmt->close();
-                    } else {
-                        $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Failed to prepare Delivery Records transfer.'];
+
+                        $deleteOrder = $conn->prepare("DELETE FROM delivery_records WHERE id = ? AND company_name = 'Orders'");
+                        if ($deleteOrder) {
+                            $deleteOrder->bind_param('i', $orderId);
+                            $deleteOrder->execute();
+                            $deleteOrder->close();
+                        }
+
+                        $_SESSION['highlight_item_code'] = strtoupper(trim($itemCode));
+                        $_SESSION['order_detail_flash'] = ['type' => 'success', 'message' => 'Order marked as Received and moved to Inventory.'];
+                        header('Location: inventory.php?tab=inventory&highlight=' . urlencode(strtoupper(trim($itemCode))), true, 302);
+                        exit;
                     }
+
+                    $_SESSION['order_detail_flash'] = ['type' => 'error', 'message' => 'Failed to prepare inventory lookup.'];
                 } else {
                     $_SESSION['order_detail_flash'] = ['type' => 'success', 'message' => 'Order updated successfully.'];
                 }
@@ -936,16 +981,6 @@ if (preg_match('/Foreign Cost:\s*([\d,]+\.?\d*)/', $orderNotes, $matches)) {
                                 <input name="peso_cost" type="number" min="0" step="0.01" value="<?php echo number_format($unitPrice, 2, '.', ''); ?>" required>
                             </div>
                             <div class="form-group">
-                                <label>Status</label>
-                                <select name="status">
-                                    <option <?php echo (($order['status'] ?? '') === 'Pending') ? 'selected' : ''; ?>>Pending</option>
-                                    <option <?php echo (($order['status'] ?? '') === 'Ready for Delivery') ? 'selected' : ''; ?>>Ready for Delivery</option>
-                                    <option <?php echo (($order['status'] ?? '') === 'In Transit') ? 'selected' : ''; ?>>In Transit</option>
-                                    <option <?php echo (($order['status'] ?? '') === 'Delivered') ? 'selected' : ''; ?>>Delivered</option>
-                                    <option <?php echo (($order['status'] ?? '') === 'Received') ? 'selected' : ''; ?>>Received</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
                                 <label>PO Number</label>
                                 <input name="po_number" type="text" value="<?php echo h($order['po_number'] ?? ''); ?>">
                             </div>
@@ -1012,22 +1047,6 @@ if (preg_match('/Foreign Cost:\s*([\d,]+\.?\d*)/', $orderNotes, $matches)) {
                     <div class="card-section" style="background: linear-gradient(135deg, rgba(244, 208, 63, 0.15) 0%, rgba(244, 208, 63, 0.05) 100%); border-radius: 12px; padding: 20px; margin: 16px 0; border: 1.5px solid rgba(244, 208, 63, 0.3);">
                         <div class="stat" style="font-size: 10px; letter-spacing: 1.2px; color: #d4a000; font-weight: 700; text-transform: uppercase;">Total Amount</div>
                         <div class="value" style="font-size: 32px; color: #f4d03f; margin-top: 10px; font-weight: 900; letter-spacing: 0.5px;">PHP <?php echo number_format($totalAmount, 2); ?></div>
-                    </div>
-
-                    <h3 style="margin-top:28px;"><i class="fas fa-file-invoice"></i>Reference Management</h3>
-                    <div class="card-section" style="padding: 16px;">
-                        <div style="display: grid; grid-template-columns: 1fr; gap: 14px;">
-                            <div style="padding: 18px; background: linear-gradient(135deg, rgba(96, 168, 255, 0.2) 0%, rgba(96, 168, 255, 0.05) 100%); border-radius: 12px; border-left: 5px solid #60a8ff; border: 1.5px solid rgba(96, 168, 255, 0.3);">
-                                <div class="stat" style="font-size: 10px; color: #ffffff; letter-spacing: 0.8px; background: linear-gradient(135deg, #60a8ff 0%, #4a8fd9 100%); padding: 5px 10px; border-radius: 5px; display: inline-block; font-weight: 700; text-transform: uppercase;">Reference Number</div>
-                                <div style="color: #1a3a5c; font-weight: 800; font-size: 22px; margin-top: 10px; letter-spacing: 0.8px; font-family: 'Courier New', monospace;">
-                                    <?php echo h($order['invoice_no'] ?: 'Not Generated'); ?>
-                                </div>
-                            </div>
-                            <form method="post" action="order-details.php?id=<?php echo intval($orderId); ?>" style="width: 100%;">
-                                <input type="hidden" name="action" value="generate_invoice">
-                                <button class="btn secondary" type="submit" style="width: 100%; justify-content: center; background: linear-gradient(135deg, #60a8ff 0%, #4a8fd9 100%); border-color: #60a8ff; color: #fff; font-weight: 700;"><i class="fas fa-plus-circle"></i> Generate Reference Number</button>
-                            </form>
-                        </div>
                     </div>
 
                     <h3 style="margin-top:28px;"><i class="fas fa-receipt"></i>PO Management</h3>

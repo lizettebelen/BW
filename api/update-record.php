@@ -32,7 +32,7 @@ try {
     $sold_to_day = !empty($data['sold_to_day']) ? intval($data['sold_to_day']) : null;
     $notes = trim($data['notes'] ?? '');
     $groupings = trim($data['groupings'] ?? '');
-    $allowedGroupings = ['1A', '1B', '2A', '3A', '4A'];
+    $allowedGroupings = ['1A', '1B', '2A', '2B', '3A', '4A'];
     if ($groupings !== '' && !in_array($groupings, $allowedGroupings, true)) {
         $groupings = '';
     }

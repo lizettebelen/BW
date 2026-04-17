@@ -15,6 +15,19 @@ function h($value) {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
+function identifyGrouping($itemName) {
+    $lowerName = strtolower($itemName);
+
+    if (strpos($lowerName, 'multi') !== false ||
+        strpos($lowerName, 'quattro') !== false ||
+        strpos($lowerName, 'quad') !== false ||
+        preg_match('/o2.*lel|lel.*o2/', $lowerName)) {
+        return 'Group B - Multi Gas';
+    }
+
+    return 'Group A - Single Gas';
+}
+
 $flash = $_SESSION['orders_flash'] ?? null;
 unset($_SESSION['orders_flash']);
 
@@ -76,10 +89,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         $deliveryMonth = $dt->format('F');
         $deliveryDay = intval($dt->format('j'));
         $deliveryYear = intval($dt->format('Y'));
-        $status = 'Pending';
-        $companyName = 'Orders';
         $totalAmount = $quantity * $unitPrice;
         $productNotes = $notes;
+
+        if ($poStatus === 'Received') {
+            $grouping = identifyGrouping($itemName);
+            $uom = 'UNITS';
+            $now = date('Y-m-d H:i:s');
+
+            $checkSql = "SELECT id FROM delivery_records WHERE item_code = ? AND company_name = 'Stock Addition' LIMIT 1";
+            $checkStmt = $conn->prepare($checkSql);
+            if ($checkStmt) {
+                $checkStmt->bind_param('s', $itemCode);
+                $checkStmt->execute();
+                $checkResult = $checkStmt->get_result();
+                $itemExists = ($checkResult && $checkResult->num_rows > 0);
+                $checkStmt->close();
+
+                if ($itemExists) {
+                    $updateSql = "UPDATE delivery_records SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE item_code = ? AND company_name = 'Stock Addition'";
+                    $updateStmt = $conn->prepare($updateSql);
+                    if ($updateStmt) {
+                        $updateStmt->bind_param('is', $quantity, $itemCode);
+                        if (!$updateStmt->execute()) {
+                            $failureCount++;
+                            $failureMessages[] = 'Failed to update inventory for ' . $itemName . ': ' . $updateStmt->error;
+                            $updateStmt->close();
+                            continue;
+                        }
+                        $updateStmt->close();
+                    } else {
+                        $failureCount++;
+                        $failureMessages[] = 'Failed to prepare inventory update for ' . $itemName . '.';
+                        continue;
+                    }
+                } else {
+                    $insertSql = "INSERT INTO delivery_records (
+                        delivery_month, delivery_day, delivery_year, item_code, item_name, quantity,
+                        company_name, status, groupings, uom, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'Stock Addition', 'Received', ?, ?, ?, ?)";
+                    $insertStmt = $conn->prepare($insertSql);
+                    if ($insertStmt) {
+                        $insertStmt->bind_param(
+                            'siississss',
+                            $deliveryMonth,
+                            $deliveryDay,
+                            $deliveryYear,
+                            $itemCode,
+                            $itemName,
+                            $quantity,
+                            $grouping,
+                            $uom,
+                            $now,
+                            $now
+                        );
+                        if (!$insertStmt->execute()) {
+                            $failureCount++;
+                            $failureMessages[] = 'Failed to add inventory for ' . $itemName . ': ' . $insertStmt->error;
+                            $insertStmt->close();
+                            continue;
+                        }
+                        $insertStmt->close();
+                    } else {
+                        $failureCount++;
+                        $failureMessages[] = 'Failed to prepare inventory insert for ' . $itemName . '.';
+                        continue;
+                    }
+                }
+
+                $successCount++;
+                continue;
+            }
+
+            $failureCount++;
+            $failureMessages[] = 'Failed to prepare inventory lookup for ' . $itemName . '.';
+            continue;
+        }
+
+        $status = 'Pending';
+        $companyName = 'Orders';
         
         // Add foreign cost to notes if provided
         if ($foreignCost > 0) {

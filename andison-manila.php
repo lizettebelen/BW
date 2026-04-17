@@ -82,22 +82,7 @@ $totalSold = count(array_filter($delivery_records, function($r) use ($isRealSold
     <link rel="stylesheet" href="css/style.css">
     <style>
         .dashboard-wrapper {
-            display: flex;
-            margin-top: 70px;
             min-height: calc(100vh - 70px);
-        }
-
-        .sidebar {
-            width: 250px;
-            flex-shrink: 0;
-        }
-
-        .main-content {
-            flex: 1;
-            overflow-y: auto;
-            margin-left: 0;
-            margin-top: 0;
-            min-height: auto;
         }
 
         .andison-container {
@@ -1438,14 +1423,6 @@ $totalSold = count(array_filter($delivery_records, function($r) use ($isRealSold
                 if (searchContainer) searchContainer.style.display = '';
             }
         }
-
-        // Toggle sidebar on mobile
-        document.getElementById('hamburgerBtn').addEventListener('click', function() {
-            const sidebar = document.getElementById('sidebar');
-            const mainContent = document.getElementById('mainContent');
-            sidebar.classList.toggle('active');
-            mainContent.classList.toggle('shifted');
-        });
 
         // Profile dropdown toggle
         document.getElementById('profileBtn').addEventListener('click', function() {

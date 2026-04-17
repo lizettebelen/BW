@@ -2120,10 +2120,11 @@ if (empty($allItems)) {
                             <option value="1A" selected>1A</option>
                             <option value="1B">1B</option>
                             <option value="2A">2A</option>
+                            <option value="2B">2B</option>
                             <option value="3A">3A</option>
                             <option value="4A">4A</option>
                         </select>
-                        <small class="input-hint">Allowed values: 1A, 1B, 2A, 3A, 4A</small>
+                        <small class="input-hint">Allowed values: 1A, 1B, 2A, 2B, 3A, 4A</small>
                     </div>
                     <div class="form-group">
                         <label for="add_highlight_preset">Color Marker</label>
@@ -2390,10 +2391,11 @@ if (empty($allItems)) {
                             <option value="1A">1A</option>
                             <option value="1B">1B</option>
                             <option value="2A">2A</option>
+                            <option value="2B">2B</option>
                             <option value="3A">3A</option>
                             <option value="4A">4A</option>
                         </select>
-                        <small class="input-hint">Allowed values: 1A, 1B, 2A, 3A, 4A</small>
+                        <small class="input-hint">Allowed values: 1A, 1B, 2A, 2B, 3A, 4A</small>
                     </div>
                     <div class="form-group">
                         <label for="edit_highlight_preset">Color Marker</label>

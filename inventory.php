@@ -2243,11 +2243,10 @@ if ($poItemsQuery) {
                                     $orderItemCode = trim((string) ($orderRow['item_code'] ?? ''));
                                     $orderPoNumber = trim((string) ($orderRow['po_number'] ?? ''));
                                     
-                                    // Skip if: invoice matched, OR order ref matched, OR item_code in inventory, OR po_number in inventory
+                                    // Skip only when the order is already synced out of the PO list.
+                                    // Keep Pending/No PO orders visible even if the same product exists in inventory.
                                     if (($orderInvoice !== '' && isset($linkedInvoices[$orderInvoice])) 
-                                        || isset($linkedOrderRefs[$orderRef])
-                                        || (isset($linkedItemCodes[$orderItemCode]) && $orderItemCode !== '')
-                                        || (isset($linkedPoNumbers[$orderPoNumber]) && $orderPoNumber !== '')) {
+                                        || isset($linkedOrderRefs[$orderRef])) {
                                         continue;
                                     }
                                     
@@ -4287,13 +4286,48 @@ if ($poItemsQuery) {
         let productRowCounter = 0;
         const productsByCode = new Map();
         const productsByName = new Map();
+
+        function normalizeLookupValue(value) {
+            return String(value ?? '')
+                .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                .replace(/\u00A0/g, ' ')
+                .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toUpperCase();
+        }
+
+        function findMatchedOption(input, kind) {
+            if (!input) return null;
+            const listId = input.getAttribute('list');
+            if (!listId) return null;
+            const list = document.getElementById(listId);
+            if (!list) return null;
+
+            const normalizedValue = normalizeLookupValue(input.value || '');
+            if (normalizedValue === '') return null;
+
+            const options = list.querySelectorAll('option');
+            for (const option of options) {
+                if (normalizeLookupValue(option.value) === normalizedValue) {
+                    return {
+                        code: kind === 'code' ? String(option.value || '').trim() : String(option.dataset.code || '').trim(),
+                        name: kind === 'name' ? String(option.value || '').trim() : String(option.dataset.name || '').trim()
+                    };
+                }
+            }
+
+            return null;
+        }
         purchaseOrderProducts.forEach(item => {
             const code = String(item.item_code || '').trim();
             const name = String(item.item_name || '').trim();
-            if (code !== '' && name !== '') {
-                productsByCode.set(code, name);
-                if (!productsByName.has(name)) {
-                    productsByName.set(name, code);
+            const normalizedCode = normalizeLookupValue(code);
+            const normalizedName = normalizeLookupValue(name);
+            if (normalizedCode !== '' && normalizedName !== '') {
+                productsByCode.set(normalizedCode, { code, name });
+                if (!productsByName.has(normalizedName)) {
+                    productsByName.set(normalizedName, { code, name });
                 }
             }
         });
@@ -4338,13 +4372,16 @@ if ($poItemsQuery) {
             clearProductValidity(row);
 
             const itemCode = String(codeInput.value || '').trim();
-            if (itemCode === '') {
+            const normalizedCode = normalizeLookupValue(itemCode);
+            if (normalizedCode === '') {
                 nameInput.value = '';
                 return;
             }
 
-            if (productsByCode.has(itemCode)) {
-                nameInput.value = productsByCode.get(itemCode) || '';
+            const matchedProduct = productsByCode.get(normalizedCode) || findMatchedOption(codeInput, 'code');
+            if (matchedProduct) {
+                codeInput.value = matchedProduct.code;
+                nameInput.value = matchedProduct.name;
                 return;
             }
 
@@ -4359,13 +4396,16 @@ if ($poItemsQuery) {
             clearProductValidity(row);
 
             const itemName = String(nameInput.value || '').trim();
-            if (itemName === '') {
+            const normalizedName = normalizeLookupValue(itemName);
+            if (normalizedName === '') {
                 codeInput.value = '';
                 return;
             }
 
-            if (productsByName.has(itemName)) {
-                codeInput.value = productsByName.get(itemName) || '';
+            const matchedProduct = productsByName.get(normalizedName) || findMatchedOption(nameInput, 'name');
+            if (matchedProduct) {
+                nameInput.value = matchedProduct.name;
+                codeInput.value = matchedProduct.code;
                 return;
             }
 
@@ -4385,28 +4425,35 @@ if ($poItemsQuery) {
 
                 const itemCode = String(codeInput.value || '').trim();
                 const itemName = String(nameInput.value || '').trim();
+                const normalizedCode = normalizeLookupValue(itemCode);
+                const normalizedName = normalizeLookupValue(itemName);
 
-                if (itemCode === '' || itemName === '') {
+                if (normalizedCode === '' || normalizedName === '') {
                     return;
                 }
 
-                if (!productsByCode.has(itemCode)) {
+                const matchedByCode = productsByCode.get(normalizedCode) || findMatchedOption(codeInput, 'code');
+                if (!matchedByCode) {
                     codeInput.setCustomValidity('Select a valid Product Code from the list.');
                     isValid = false;
                     return;
                 }
 
-                if (!productsByName.has(itemName)) {
+                const matchedByName = productsByName.get(normalizedName) || findMatchedOption(nameInput, 'name');
+                if (!matchedByName) {
                     nameInput.setCustomValidity('Select a valid Product Name from the list.');
                     isValid = false;
                     return;
                 }
 
-                const expectedName = productsByCode.get(itemCode) || '';
-                if (expectedName !== itemName) {
+                if (matchedByCode.name !== matchedByName.name || matchedByCode.code !== matchedByName.code) {
                     nameInput.setCustomValidity('Product Name must match the selected Product Code.');
                     isValid = false;
+                    return;
                 }
+
+                codeInput.value = matchedByCode.code;
+                nameInput.value = matchedByCode.name;
             });
 
             return isValid;

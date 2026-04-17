@@ -105,9 +105,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         exit;
     }
 
-    $allowedCategories = ['1A', '1B', '2A', '3A', '4A'];
+    $allowedCategories = ['1A', '1B', '2A', '2B', '3A', '4A'];
     if (!in_array($category, $allowedCategories, true)) {
-        $_SESSION['inquiry_flash'] = ['type' => 'error', 'message' => 'Invalid grouping. Allowed values are: 1A, 1B, 2A, 3A, 4A.'];
+        $_SESSION['inquiry_flash'] = ['type' => 'error', 'message' => 'Invalid grouping. Allowed values are: 1A, 1B, 2A, 2B, 3A, 4A.'];
         header('Location: inquiry.php', true, 302);
         exit;
     }
@@ -515,7 +515,7 @@ $canAddInquiry = is_inquiry_admin();
             </div>
         </aside>
 
-        <main class="main-content">
+        <main class="main-content" id="mainContent">
             <div class="page-header">
                 <div>
                     <h1 class="page-title"><i class="fas fa-file-invoice"></i> Inquiry</h1>
@@ -676,12 +676,13 @@ $canAddInquiry = is_inquiry_admin();
                             <input id="item_name" name="item_name" type="text" required>
                         </div>
                         <div class="form-group">
-                            <label for="category">Groupings (1A, 1B, 2A, 3A, 4A)</label>
+                            <label for="category">Groupings (1A, 1B, 2A, 2B, 3A, 4A)</label>
                             <select id="category" name="category" required>
                                 <option value="">Select Grouping</option>
                                 <option value="1A" selected>1A</option>
                                 <option value="1B">1B</option>
                                 <option value="2A">2A</option>
+                                <option value="2B">2B</option>
                                 <option value="3A">3A</option>
                                 <option value="4A">4A</option>
                             </select>
@@ -806,10 +807,26 @@ $canAddInquiry = is_inquiry_admin();
         // Hamburger Menu Toggle
         const hamburgerBtn = document.getElementById('hamburgerBtn');
         const sidebar = document.getElementById('sidebar');
+        const mainContent = document.getElementById('mainContent');
         if (hamburgerBtn && sidebar) {
             hamburgerBtn.addEventListener('click', function() {
-                sidebar.classList.toggle('active');
+                sidebar.classList.toggle('collapsed');
+                if (mainContent) {
+                    mainContent.classList.toggle('sidebar-collapsed');
+                }
+
+                // Keep the user's sidebar preference consistent with other pages.
+                const isCollapsed = sidebar.classList.contains('collapsed');
+                localStorage.setItem('sidebarCollapsed', isCollapsed ? 'true' : 'false');
             });
+
+            // Restore saved sidebar state on load.
+            if (localStorage.getItem('sidebarCollapsed') === 'true') {
+                sidebar.classList.add('collapsed');
+                if (mainContent) {
+                    mainContent.classList.add('sidebar-collapsed');
+                }
+            }
         }
 
         // Profile Dropdown Menu
