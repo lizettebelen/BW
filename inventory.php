@@ -43,6 +43,9 @@ if ($searchItem) {
     $searchFilter = " AND (item_code LIKE '%{$searchItemEscape}%' OR item_name LIKE '%{$searchItemEscape}%')";
 }
 
+$owner_user_id = intval($_SESSION['user_id'] ?? 0);
+$owner_filter_sql = " AND owner_user_id = {$owner_user_id}";
+
 // Get all items with stock and delivery counts
 $items = [];
 $highlightItemCode = null;
@@ -63,9 +66,9 @@ $result = $conn->query("
         model_no,
         quantity as current_stock,
         notes as source_filename,
-        COALESCE(updated_at, created_at, datetime('now')) as last_updated
+        COALESCE(updated_at, created_at, NOW()) as last_updated
     FROM delivery_records
-    WHERE company_name = 'Stock Addition' {$searchFilter}
+    WHERE company_name = 'Stock Addition'{$owner_filter_sql} {$searchFilter}
     ORDER BY COALESCE(updated_at, created_at) DESC
 ");
 
@@ -166,7 +169,7 @@ $purchaseOrderProducts = [];
 $poItemsQuery = $conn->query(" 
     SELECT DISTINCT item_code, item_name
     FROM delivery_records
-    WHERE company_name = 'Stock Addition'
+    WHERE company_name = 'Stock Addition'{$owner_filter_sql}
       AND item_code IS NOT NULL AND item_code != ''
       AND item_name IS NOT NULL AND item_name != ''
       AND (box_code IS NULL OR box_code = '')
@@ -1717,107 +1720,7 @@ if ($poItemsQuery) {
 
     <div class="dashboard-wrapper">
         <!-- SIDEBAR -->
-        <aside class="sidebar" id="sidebar">
-            <nav class="sidebar-nav">
-                <ul class="sidebar-menu">
-                    <li class="menu-item">
-                        <a href="index.php" class="menu-link">
-                            <i class="fas fa-chart-line"></i>
-                            <span class="menu-label">Dashboard</span>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a href="sales-overview.php" class="menu-link">
-                            <i class="fas fa-chart-pie"></i>
-                            <span class="menu-label">Sales Overview</span>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a href="sales-records.php" class="menu-link">
-                            <i class="fas fa-calendar-alt"></i>
-                            <span class="menu-label">Sales Records</span>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a href="inquiry.php" class="menu-link">
-                            <i class="fas fa-file-invoice"></i>
-                            <span class="menu-label">Inquiry</span>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a href="delivery-records.php" class="menu-link">
-                            <i class="fas fa-truck"></i>
-                            <span class="menu-label">Delivery Records</span>
-                        </a>
-                    </li>
-
-                    <li class="menu-item active">
-                        <a href="inventory.php" class="menu-link">
-                            <i class="fas fa-boxes"></i>
-                            <span class="menu-label">Inventory</span>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a href="andison-manila.php" class="menu-link">
-                            <i class="fas fa-truck-fast"></i>
-                            <span class="menu-label">Andison Manila</span>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a href="client-companies.php" class="menu-link">
-                            <i class="fas fa-building"></i>
-                            <span class="menu-label">Client Companies</span>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a href="models.php" class="menu-link">
-                            <i class="fas fa-cube"></i>
-                            <span class="menu-label">Models</span>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a href="reports.php" class="menu-link">
-                            <i class="fas fa-file-alt"></i>
-                            <span class="menu-label">Reports</span>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a href="upload-data.php" class="menu-link">
-                            <i class="fas fa-upload"></i>
-                            <span class="menu-label">Upload Data</span>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a href="warranty-replacements.php" class="menu-link">
-                            <i class="fas fa-wrench"></i>
-                            <span class="menu-label">Warranty Items</span>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a href="settings.php" class="menu-link">
-                            <i class="fas fa-cog"></i>
-                            <span class="menu-label">Settings</span>
-                        </a>
-                    </li>
-                </ul>
-            </nav>
-
-            <div class="sidebar-footer">
-                <p class="company-info">Andison Industrial</p>
-                <p class="company-year">© 2025</p>
-            </div>
-        </aside>
+        <?php require __DIR__ . '/sidebar.php'; ?>
 
         <!-- MAIN CONTENT -->
         <main class="main-content" id="mainContent">
@@ -1958,7 +1861,7 @@ if ($poItemsQuery) {
                             MAX(item_name) as item_name,
                             COALESCE(SUM(quantity), 0) as current_stock
                         FROM delivery_records
-                        WHERE company_name = 'Stock Addition'
+                        WHERE company_name = 'Stock Addition'{$owner_filter_sql}
                         GROUP BY item_code
                     ");
                     
@@ -2003,7 +1906,7 @@ if ($poItemsQuery) {
                 <span style="font-size: 14px; font-weight: 400; color: #000000; text-transform: none;">
                     Showing <?php echo count($items); ?> of <span id="totalCount"><?php 
                         // Get total count - count ALL rows (not just distinct codes)
-                        $totalCountResult = $conn->query("SELECT COUNT(*) as cnt FROM delivery_records WHERE company_name = 'Stock Addition'");
+                        $totalCountResult = $conn->query("SELECT COUNT(*) as cnt FROM delivery_records WHERE company_name = 'Stock Addition'{$owner_filter_sql}");
                         $totalCountRow = $totalCountResult->fetch_assoc();
                         echo $totalCountRow['cnt'];
                     ?></span> items
@@ -2205,7 +2108,7 @@ if ($poItemsQuery) {
                             $linkedOrderRefs = [];
                             $linkedItemCodes = [];
                             $linkedPoNumbers = [];
-                            $linkedResult = $conn->query("SELECT invoice_no, notes, item_code, po_number FROM delivery_records WHERE company_name != 'Orders'");
+                            $linkedResult = $conn->query("SELECT invoice_no, notes, item_code, po_number FROM delivery_records WHERE company_name != 'Orders'{$owner_filter_sql}");
                             if ($linkedResult) {
                                 while ($linkedRow = $linkedResult->fetch_assoc()) {
                                     $linkedInvoice = trim((string) ($linkedRow['invoice_no'] ?? ''));
@@ -2232,7 +2135,7 @@ if ($poItemsQuery) {
                             
                             $ordersListSql = "SELECT id, order_customer, order_date, item_code, item_name, quantity, unit_price, total_amount, invoice_no, po_number, po_status, status, created_at
                                             FROM delivery_records
-                                            WHERE $orderWhere
+                                            WHERE $orderWhere{$owner_filter_sql}
                                             ORDER BY id DESC";
                             $ordersListResult = $conn->query($ordersListSql);
                             $tabOrders = [];
@@ -2473,7 +2376,7 @@ if ($poItemsQuery) {
                         $itemsQuery = $conn->query("
                             SELECT DISTINCT item_code, item_name
                             FROM delivery_records
-                            WHERE company_name = 'Stock Addition' AND (box_code IS NULL OR box_code = '')
+                            WHERE company_name = 'Stock Addition'{$owner_filter_sql} AND (box_code IS NULL OR box_code = '')
                             ORDER BY item_code ASC
                         ");
                         if ($itemsQuery) {
@@ -4871,3 +4774,4 @@ if ($poItemsQuery) {
             to { transform: translateX(400px); opacity: 0; }
         }
     </style>
+

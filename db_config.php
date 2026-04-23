@@ -5,99 +5,87 @@ $db_user = 'root';
 $db_pass = '';
 $db_name = 'bw_gas_detector';
 
-// Try MySQL first; fall back to SQLite when MySQL is unavailable
 $conn = null;
 
-// Enable MySQLi exceptions
+// Use MySQL so the database is managed in phpMyAdmin.
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
-// Try MySQL connection with proper exception handling
 try {
-    $mysql = new mysqli($db_host, $db_user, $db_pass, $db_name);
-    $mysql->set_charset('utf8mb4');
-    $conn = $mysql;
-} catch (Exception $e) {
-    // Fall back to SQLite (no MySQL required)
-    require_once __DIR__ . '/db_sqlite_compat.php';
-    $sqlite_file = __DIR__ . '/bw_gas_detector.sqlite';
-    $conn = new SqliteConn($sqlite_file);
+    $conn = new mysqli($db_host, $db_user, $db_pass, $db_name);
+    $conn->set_charset('utf8mb4');
 
-    if ($conn->connect_error) {
-        http_response_code(500);
-        die(json_encode([
-            'success'  => false,
-            'message'  => 'Database connection failed: ' . $conn->connect_error
-        ]));
+    if (session_status() === PHP_SESSION_NONE) {
+        @session_start();
     }
 
-    // Bootstrap core tables the first time
+    $currentUserId = isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : null;
+    if ($currentUserId && $currentUserId > 0) {
+        $conn->query('SET @app_user_id = ' . $currentUserId);
+    } else {
+        $conn->query('SET @app_user_id = NULL');
+    }
+
+    function safeSchemaUpgrade(mysqli $conn, string $sql): void {
+        try {
+            $conn->query($sql);
+        } catch (Exception $e) {
+            // Ignore when the column already exists or the migration is not needed.
+        }
+    }
+
+    $recordsTable = 'delivery_records';
+
+    // Keep the MySQL table aligned with the fields used across the app.
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN invoice_no VARCHAR(100) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN serial_no VARCHAR(150) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN delivery_month VARCHAR(20) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN delivery_day INT DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN delivery_year INT DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN record_date DATE DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN delivery_date DATE DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN order_customer VARCHAR(255) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN transferred_to VARCHAR(255) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN order_date DATE DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN box_code VARCHAR(50) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN model_no VARCHAR(100) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN uom VARCHAR(50) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN sold_to_month VARCHAR(20) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN sold_to_day INT DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN unit_price DECIMAL(12,2) DEFAULT 0");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN total_amount DECIMAL(12,2) DEFAULT 0");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN po_number VARCHAR(100) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN po_status VARCHAR(50) DEFAULT 'No PO'");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN groupings VARCHAR(50) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN dataset_name VARCHAR(50) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD COLUMN owner_user_id INT DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE {$recordsTable} ADD INDEX idx_owner_user_id (owner_user_id)");
+
     $conn->query("CREATE TABLE IF NOT EXISTS users (
-        id       INTEGER PRIMARY KEY AUTOINCREMENT,
-        name     VARCHAR(255) NOT NULL,
-        email    VARCHAR(255) NOT NULL UNIQUE,
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL UNIQUE,
         password VARCHAR(255) NOT NULL,
+        two_factor_secret VARCHAR(32) DEFAULT NULL,
+        two_factor_enabled TINYINT(1) DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )");
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    $conn->query("CREATE TABLE IF NOT EXISTS delivery_records (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        invoice_no     VARCHAR(50),
-        serial_no      VARCHAR(100),
-        delivery_month VARCHAR(20),
-        delivery_day   INTEGER,
-        delivery_year  INTEGER      NOT NULL DEFAULT 0,
-        record_date    DATE,
-        delivery_date  DATE,
-        item_code      VARCHAR(50)  NOT NULL,
-        item_name      VARCHAR(255),
-        company_name   VARCHAR(255),
-        sold_to        VARCHAR(255),
-        quantity       INTEGER      NOT NULL DEFAULT 0,
-        status         VARCHAR(50)  NOT NULL DEFAULT 'Delivered',
-        highlight_color VARCHAR(20),
-        cell_styles    TEXT,
-        notes          TEXT,
-        created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-        updated_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
-    )");
+    safeSchemaUpgrade($conn, "ALTER TABLE users ADD COLUMN two_factor_secret VARCHAR(32) DEFAULT NULL");
+    safeSchemaUpgrade($conn, "ALTER TABLE users ADD COLUMN two_factor_enabled TINYINT(1) DEFAULT 0");
 
-    // Upgrade: add columns that may be missing from older SQLite databases
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN invoice_no VARCHAR(50)");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN serial_no VARCHAR(100)");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN delivery_year INTEGER NOT NULL DEFAULT 0");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN record_date DATE");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN delivery_date DATE");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN highlight_color VARCHAR(20)");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN cell_styles TEXT");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN groupings VARCHAR(50)");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN uom VARCHAR(50)");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN sold_to VARCHAR(255)");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN sold_to_month VARCHAR(20)");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN sold_to_day INTEGER");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN box_code VARCHAR(50)");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN model_no VARCHAR(100)");
-    @$conn->query("ALTER TABLE delivery_records ADD COLUMN description TEXT");
-    
-    // Add 2FA columns for users table
-    @$conn->query("ALTER TABLE users ADD COLUMN two_factor_secret VARCHAR(32) DEFAULT NULL");
-    @$conn->query("ALTER TABLE users ADD COLUMN two_factor_enabled INTEGER DEFAULT 0");
+    // Keep owner field sticky for inserts made through the scoped view.
+    $conn->query('DROP TRIGGER IF EXISTS trg_delivery_records_set_owner');
+    $conn->query("CREATE TRIGGER trg_delivery_records_set_owner
+        BEFORE INSERT ON {$recordsTable}
+        FOR EACH ROW
+        SET NEW.owner_user_id = COALESCE(NEW.owner_user_id, @app_user_id)");
+} catch (Exception $e) {
+    http_response_code(500);
+    die(json_encode([
+        'success' => false,
+        'message' => 'MySQL connection failed. Create/import the bw_gas_detector database in phpMyAdmin first.',
+        'error'   => $e->getMessage(),
+    ]));
 }
-
-// Apply lightweight schema upgrades for Orders module on both MySQL and SQLite.
-function safeSchemaUpgrade($conn, $sql) {
-    try {
-        $conn->query($sql);
-    } catch (Exception $e) {
-        // Ignore when column already exists or driver cannot apply identical migration.
-    }
-}
-
-safeSchemaUpgrade($conn, "ALTER TABLE delivery_records ADD COLUMN order_customer VARCHAR(255)");
-safeSchemaUpgrade($conn, "ALTER TABLE delivery_records ADD COLUMN sold_to VARCHAR(255)");
-safeSchemaUpgrade($conn, "ALTER TABLE delivery_records ADD COLUMN order_date DATE");
-safeSchemaUpgrade($conn, "ALTER TABLE delivery_records ADD COLUMN unit_price DECIMAL(12,2) DEFAULT 0");
-safeSchemaUpgrade($conn, "ALTER TABLE delivery_records ADD COLUMN total_amount DECIMAL(12,2) DEFAULT 0");
-safeSchemaUpgrade($conn, "ALTER TABLE delivery_records ADD COLUMN po_number VARCHAR(100)");
-safeSchemaUpgrade($conn, "ALTER TABLE delivery_records ADD COLUMN po_status VARCHAR(50) DEFAULT 'No PO'");
 ?>

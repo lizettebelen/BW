@@ -144,14 +144,14 @@ foreach ($topCompanies as $company) {
     <style>
         .page-section {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-            gap: 40px;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 22px;
             margin-bottom: 30px;
         }
         
         .gauge-card {
             background: linear-gradient(135deg, #4a7ba7 0%, #2e5c8a 100%);
-            padding: 50px;
+            padding: 28px;
             border-radius: 20px;
             border: 2px solid rgba(255, 255, 255, 0.1);
             display: flex;
@@ -163,25 +163,39 @@ foreach ($topCompanies as $company) {
         }
         
         .gauge-card h3 {
-            font-size: 18px;
-            color: #ffffff;
+            font-size: 16px;
+            color: #f4f8ff;
             font-weight: 600;
-            margin-bottom: 30px;
+            margin-bottom: 18px;
             text-transform: capitalize;
+            text-shadow: 0 1px 2px rgba(7, 18, 35, 0.45);
         }
         
         .gauge-chart {
             position: relative;
-            width: 200px;
-            height: 200px;
-            margin-bottom: 20px;
+            width: 160px;
+            height: 160px;
+            margin-bottom: 12px;
         }
         
         .gauge-value {
-            font-size: 64px;
+            font-size: 52px;
             font-weight: 700;
-            color: #f4d03f;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            color: #ffd84d;
+            text-shadow: 0 2px 6px rgba(7, 18, 35, 0.5);
+        }
+
+        /* Keep card text readable even when global light-mode heading rules are active */
+        html.light-mode .gauge-card h3,
+        body.light-mode .gauge-card h3 {
+            color: #f4f8ff !important;
+            text-shadow: 0 1px 2px rgba(7, 18, 35, 0.45);
+        }
+
+        html.light-mode .gauge-value,
+        body.light-mode .gauge-value {
+            color: #ffd84d !important;
+            text-shadow: 0 2px 6px rgba(7, 18, 35, 0.5);
         }
         
         .chart-row {
@@ -266,6 +280,13 @@ foreach ($topCompanies as $company) {
             display: flex;
             align-items: center;
             gap: 12px;
+        }
+
+        .page-title h1 {
+            margin: 0;
+            font-size: inherit;
+            font-weight: inherit;
+            line-height: 1.2;
         }
         
         .section-title {
@@ -399,130 +420,7 @@ foreach ($topCompanies as $company) {
     </nav>
 
     <!-- SIDEBAR -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-content">
-            <!-- Sidebar Menu -->
-            <ul class="sidebar-menu">
-                <!-- Dashboard -->
-                <li class="menu-item">
-                    <a href="index.php" class="menu-link">
-                        <i class="fas fa-chart-line"></i>
-                        <span class="menu-label">Dashboard</span>
-                    </a>
-                </li>
-
-                <!-- Sales Overview -->
-                <li class="menu-item">
-                    <a href="sales-overview.php" class="menu-link">
-                        <i class="fas fa-chart-pie"></i>
-                        <span class="menu-label">Sales Overview</span>
-                    </a>
-                </li>
-
-                <!-- Sales Records -->
-                <li class="menu-item">
-                    <a href="sales-records.php" class="menu-link">
-                        <i class="fas fa-calendar-alt"></i>
-                        <span class="menu-label">Sales Records</span>
-                    </a>
-                </li>
-                    <li class="menu-item">
-                        <a href="inquiry.php" class="menu-link">
-                            <i class="fas fa-file-invoice"></i>
-                            <span class="menu-label">Inquiry</span>
-                        </a>
-                    </li>
-
-                <!-- Delivery Records -->
-                <li class="menu-item">
-                    <a href="delivery-records.php" class="menu-link">
-                        <i class="fas fa-truck"></i>
-                        <span class="menu-label">Delivery Records</span>
-                    </a>
-                </li>
-
-                <!-- Inventory -->
-                <li class="menu-item">
-                    <a href="inventory.php" class="menu-link">
-                        <i class="fas fa-boxes"></i>
-                        <span class="menu-label">Inventory</span>
-                    </a>
-                </li>
-
-                <!-- Andison Manila -->
-                <li class="menu-item">
-                    <a href="andison-manila.php" class="menu-link">
-                        <i class="fas fa-truck-fast"></i>
-                        <span class="menu-label">Andison Manila</span>
-                    </a>
-                </li>
-
-                <!-- Client Companies -->
-                <li class="menu-item">
-                    <a href="client-companies.php" class="menu-link">
-                        <i class="fas fa-building"></i>
-                        <span class="menu-label">Client Companies</span>
-                    </a>
-                </li>
-
-                <!-- Models -->
-                <li class="menu-item">
-                    <a href="models.php" class="menu-link">
-                        <i class="fas fa-cube"></i>
-                        <span class="menu-label">Models</span>
-                    </a>
-                </li>
-
-                <!-- Analytics -->
-                <li class="menu-item active">
-                    <a href="analytics.php" class="menu-link">
-                        <i class="fas fa-chart-bar"></i>
-                        <span class="menu-label">Analytics</span>
-                    </a>
-                </li>
-
-                <!-- Reports -->
-                <li class="menu-item">
-                    <a href="reports.php" class="menu-link">
-                        <i class="fas fa-file-alt"></i>
-                        <span class="menu-label">Reports</span>
-                    </a>
-                </li>
-
-                <!-- Upload Data -->
-                <li class="menu-item">
-                    <a href="upload-data.php" class="menu-link">
-                        <i class="fas fa-upload"></i>
-                        <span class="menu-label">Upload Data</span>
-                    </a>
-                </li>
-
-                <!-- Warranty Items -->
-                <li class="menu-item">
-                    <a href="warranty-replacements.php" class="menu-link">
-                        <i class="fas fa-wrench"></i>
-                        <span class="menu-label">Warranty Items</span>
-                    </a>
-                </li>
-
-                <!-- Settings -->
-                <li class="menu-item">
-                    <a href="settings.php" class="menu-link">
-                        <i class="fas fa-cog"></i>
-                        <span class="menu-label">Settings</span>
-                    </a>
-                </li>
-            </ul>
-        </div>
-
-        <!-- Sidebar Footer -->
-        <div class="sidebar-footer">
-            <div class="version-info">
-                <p><strong>BW Gas Detector</strong></p>
-                <p>v2.1.5</p>
-            </div>
-        </div>
-    </aside>
+    <?php require __DIR__ . '/sidebar.php'; ?>
 
     <!-- MAIN CONTENT -->
     <main class="main-content">
@@ -1123,3 +1021,4 @@ foreach ($topCompanies as $company) {
     </script>
 </body>
 </html>
+

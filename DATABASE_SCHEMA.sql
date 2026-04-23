@@ -2,6 +2,9 @@
 -- This file contains the required database table structure for the Excel import feature
 
 -- Database: bw_gas_detector
+CREATE DATABASE IF NOT EXISTS `bw_gas_detector` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `bw_gas_detector`;
+
 -- Table: delivery_records
 
 CREATE TABLE IF NOT EXISTS `delivery_records` (
@@ -36,12 +39,6 @@ CREATE TABLE IF NOT EXISTS `delivery_records` (
   UNIQUE KEY `unique_delivery` (`delivery_month`, `delivery_day`, `delivery_year`, `item_code`, `company_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Stores delivery records for BW Gas Detector products';
 
--- Create database if it doesn't exist
-CREATE DATABASE IF NOT EXISTS `bw_gas_detector` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- Use the database
-USE `bw_gas_detector`;
-
 -- Insert sample data (optional)
 INSERT INTO delivery_records (delivery_month, delivery_day, item_code, item_name, company_name, sold_to, quantity, status, highlight_color, cell_styles, notes)
 VALUES 
@@ -49,6 +46,3 @@ VALUES
 ('January', 5, 'MCX3-FC1', 'BW Gas Detector - Model 3 FC1', 'Tech Solutions Ltd', 'Tech Solutions Ltd', 15, 'Delivered', '#D9EAF7', '{"company_name":"#D9EAF7"}', NULL),
 ('February', 3, 'MCX3-MPCB', 'BW Gas Detector - Model 3 MPCB', 'Global Industries', 'Global Industries', 8, 'In Transit', NULL, NULL, 'Expected delivery by Feb 10')
 ON DUPLICATE KEY UPDATE quantity = VALUES(quantity), updated_at = CURRENT_TIMESTAMP;
-
--- Display table structure
-DESCRIBE delivery_records;

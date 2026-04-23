@@ -9,47 +9,19 @@ require_once 'db_config.php';
 require_once 'dataset-indicator.php';
 
 // Initialize warranty table if needed
-$isMysql = ($conn instanceof mysqli);
-if ($isMysql) {
-    $check = $conn->query("SHOW TABLES LIKE 'warranty_replacements'");
-    if (!$check || $check->num_rows === 0) {
-        // Table doesn't exist, redirect to setup
-        header('Location: api/create-warranty-table.php');
-        exit;
-    }
-} else {
-    $check = $conn->query("SELECT name FROM sqlite_master WHERE type='table' AND name='warranty_replacements'");
-    if (!$check || $check->num_rows === 0) {
-        $conn->query("CREATE TABLE IF NOT EXISTS warranty_replacements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            delivery_record_id INTEGER DEFAULT NULL,
-            invoice_no VARCHAR(100) DEFAULT NULL,
-            delivery_month VARCHAR(20),
-            delivery_day INTEGER,
-            delivery_year INTEGER,
-            record_date DATE DEFAULT NULL,
-            delivery_date DATE DEFAULT NULL,
-            item_code VARCHAR(50),
-            item_name VARCHAR(255),
-            company_name VARCHAR(255),
-            sold_to VARCHAR(255) DEFAULT NULL,
-            quantity INTEGER NOT NULL DEFAULT 0,
-            status VARCHAR(50) NOT NULL DEFAULT 'Warranty Pending',
-            uom VARCHAR(20) DEFAULT NULL,
-            serial_no VARCHAR(150) DEFAULT NULL,
-            transferred_to VARCHAR(255) DEFAULT NULL,
-            notes TEXT DEFAULT NULL,
-            warranty_flag INTEGER DEFAULT 1,
-            warranty_date DATE DEFAULT NULL,
-            red_text_detected INTEGER DEFAULT 1,
-            dataset_name VARCHAR(50) DEFAULT NULL,
-            highlight_color VARCHAR(20) DEFAULT NULL,
-            cell_styles TEXT DEFAULT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )");
-    }
+if (!($conn instanceof mysqli)) {
+    header('Location: api/create-warranty-table.php');
+    exit;
 }
+
+$check = $conn->query("SHOW TABLES LIKE 'warranty_replacements'");
+if (!$check || $check->num_rows === 0) {
+    // Table doesn't exist, redirect to setup
+    header('Location: api/create-warranty-table.php');
+    exit;
+}
+
+$isMysql = true;
 
 // Get search and filter parameters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -191,6 +163,33 @@ if ($companies_result) {
             margin: 0;
             font-size: 13px;
             line-height: 1.5;
+        }
+
+        .warranty-header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .btn-add-record {
+            background: linear-gradient(135deg, #f4d03f 0%, #f9d76a 100%);
+            color: #1a3a5c;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 12px;
+            font-family: 'Poppins', sans-serif;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .btn-add-record:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(244, 208, 63, 0.35);
         }
 
         .warranty-stats {
@@ -427,21 +426,373 @@ if ($companies_result) {
         .action-buttons {
             display: flex;
             gap: 6px;
+            justify-content: flex-end;
         }
 
         .btn-small {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: #fff;
-            padding: 4px 8px;
+            border: 1px solid transparent;
+            color: #12365b;
+            padding: 5px 8px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 11px;
             transition: all 0.2s ease;
+            min-width: 28px;
+            min-height: 28px;
         }
 
         .btn-small:hover {
-            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .btn-view {
+            background: #e8f3ff;
+            border-color: #b8d3ef;
+            color: #1f5f97;
+        }
+
+        .btn-view:hover {
+            background: #d8eafb;
+        }
+
+        .btn-status {
+            background: #fff5da;
+            border-color: #f2dc98;
+            color: #7d6200;
+        }
+
+        .btn-status:hover {
+            background: #ffeec1;
+        }
+
+        .btn-delete {
+            background: #fff0f0;
+            border-color: #eabcbc;
+            color: #b44545;
+        }
+
+        .btn-delete:hover {
+            background: #ffe3e3;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(7, 14, 26, 0.7);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1200;
+            padding: 20px;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal-card {
+            width: min(760px, 100%);
+            background: linear-gradient(180deg, #f9fcff 0%, #eef4fb 100%);
+            border: 1px solid #c9d8ea;
+            border-radius: 14px;
+            box-shadow: 0 20px 48px rgba(8, 24, 44, 0.22);
+            overflow: hidden;
+            color: #17324d;
+        }
+
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #d6e2f0;
+            background: linear-gradient(180deg, #f2f8ff 0%, #ebf3fd 100%);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            margin: 0;
+            color: #12365b;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .modal-close {
+            background: #e7effa;
+            border: 1px solid #b9cbe2;
+            color: #2b4b71;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .modal-close:hover {
+            background: #d8e7f8;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .modal-field {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-field.full {
+            grid-column: 1 / -1;
+        }
+
+        .modal-field label {
+            color: #24486e;
+            font-size: 11px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.45px;
+            text-shadow: none;
+        }
+
+        .modal-field input,
+        .modal-field select,
+        .modal-field textarea {
+            background: #ffffff;
+            border: 1px solid #b8cce3;
+            border-radius: 7px;
+            color: #162f47;
+            padding: 9px 12px;
+            font-size: 13px;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .modal-field input::placeholder,
+        .modal-field textarea::placeholder {
+            color: #6c849f;
+            opacity: 1;
+        }
+
+        .modal-field select option {
+            color: #162f47;
+        }
+
+        .modal-field textarea {
+            min-height: 88px;
+            resize: vertical;
+        }
+
+        .modal-field input:focus,
+        .modal-field select:focus,
+        .modal-field textarea:focus {
+            outline: none;
+            border-color: #4b88c7;
+            box-shadow: 0 0 0 3px rgba(75, 136, 199, 0.22);
+        }
+
+        .modal-actions {
+            margin-top: 16px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .system-alert-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 28, 46, 0.55);
+            backdrop-filter: blur(2px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3200;
+            padding: 16px;
+        }
+
+        .system-alert-overlay.show {
+            display: flex;
+        }
+
+        .system-alert-card {
+            width: min(420px, 100%);
+            background: #ffffff;
+            border-radius: 6px;
+            border-top: 4px solid #1f2937;
+            box-shadow: 0 26px 55px rgba(11, 25, 43, 0.32);
+            position: relative;
+            padding: 24px 22px 18px;
+            text-align: center;
+            color: #1f2937;
+        }
+
+        .system-alert-card.warning {
+            border-top-color: #f2a63c;
+        }
+
+        .system-alert-card.success {
+            border-top-color: #24bf93;
+        }
+
+        .system-alert-card.error {
+            border-top-color: #ef4f4f;
+        }
+
+        .system-alert-close {
+            position: absolute;
+            right: 10px;
+            top: 8px;
+            border: none;
+            background: transparent;
+            color: #5c6472;
+            font-size: 18px;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .system-alert-icon {
+            width: 58px;
+            height: 58px;
+            margin: 0 auto 14px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            border: 2px solid #1f2937;
+            color: #1f2937;
+        }
+
+        .system-alert-card.warning .system-alert-icon {
+            border-color: #f2a63c;
+            color: #f2a63c;
+        }
+
+        .system-alert-card.success .system-alert-icon {
+            border-color: #24bf93;
+            color: #24bf93;
+        }
+
+        .system-alert-card.error .system-alert-icon {
+            border-color: #ef4f4f;
+            color: #ef4f4f;
+        }
+
+        .system-alert-title {
+            margin: 0 0 10px;
+            font-size: 23px;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .system-alert-message {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #5c6472;
+            white-space: pre-line;
+        }
+
+        .system-alert-details {
+            margin-top: 14px;
+            text-align: left;
+            border: 1px solid #e1e8f1;
+            border-radius: 8px;
+            background: #f8fbff;
+            overflow: hidden;
+            display: none;
+        }
+
+        .system-alert-detail-row {
+            display: grid;
+            grid-template-columns: 130px 1fr;
+            gap: 10px;
+            padding: 9px 12px;
+            border-bottom: 1px solid #e9eef6;
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .system-alert-detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .system-alert-detail-label {
+            color: #375574;
+            font-weight: 700;
+        }
+
+        .system-alert-detail-value {
+            color: #1f2937;
+            word-break: break-word;
+        }
+
+        .system-alert-select-wrap {
+            margin-top: 14px;
+            display: none;
+        }
+
+        .system-alert-select {
+            width: 100%;
+            border: 1px solid #cfd8e3;
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 14px;
+            color: #1f2937;
+            background: #fff;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .system-alert-actions {
+            margin-top: 18px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .system-alert-btn {
+            border: none;
+            border-radius: 4px;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 600;
+            font-size: 14px;
+            padding: 10px 20px;
+            cursor: pointer;
+            min-width: 145px;
+            transition: opacity 0.2s ease;
+        }
+
+        .system-alert-btn:hover {
+            opacity: 0.92;
+        }
+
+        .system-alert-btn-primary {
+            background: #111827;
+            color: #ffffff;
+        }
+
+        .system-alert-btn-cancel {
+            background: transparent;
+            color: #1f2937;
+            text-decoration: none;
+            min-width: auto;
+            padding: 0;
+        }
+
+        @media (max-width: 720px) {
+            .modal-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .system-alert-detail-row {
+                grid-template-columns: 1fr;
+                gap: 4px;
+            }
         }
     </style>
 </head>
@@ -485,107 +836,27 @@ if ($companies_result) {
     </nav>
 
     <!-- SIDEBAR -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-content">
-            <ul class="sidebar-menu">
-                <li class="menu-item">
-                    <a href="index.php" class="menu-link">
-                        <i class="fas fa-chart-line"></i>
-                        <span class="menu-label">Dashboard</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a href="sales-overview.php" class="menu-link">
-                        <i class="fas fa-chart-pie"></i>
-                        <span class="menu-label">Sales Overview</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a href="sales-records.php" class="menu-link">
-                        <i class="fas fa-calendar-alt"></i>
-                        <span class="menu-label">Sales Records</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a href="inquiry.php" class="menu-link">
-                        <i class="fas fa-file-invoice"></i>
-                        <span class="menu-label">Inquiry</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a href="delivery-records.php" class="menu-link">
-                        <i class="fas fa-truck"></i>
-                        <span class="menu-label">Delivery Records</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a href="inventory.php" class="menu-link">
-                        <i class="fas fa-boxes"></i>
-                        <span class="menu-label">Inventory</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a href="andison-manila.php" class="menu-link">
-                        <i class="fas fa-truck-fast"></i>
-                        <span class="menu-label">Andison Manila</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a href="client-companies.php" class="menu-link">
-                        <i class="fas fa-building"></i>
-                        <span class="menu-label">Client Companies</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a href="models.php" class="menu-link">
-                        <i class="fas fa-cube"></i>
-                        <span class="menu-label">Models</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a href="reports.php" class="menu-link">
-                        <i class="fas fa-file-alt"></i>
-                        <span class="menu-label">Reports</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a href="upload-data.php" class="menu-link">
-                        <i class="fas fa-upload"></i>
-                        <span class="menu-label">Upload Data</span>
-                    </a>
-                </li>
-                <li class="menu-item active">
-                    <a href="warranty-replacements.php" class="menu-link">
-                        <i class="fas fa-wrench"></i>
-                        <span class="menu-label">Warranty Items</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a href="settings.php" class="menu-link">
-                        <i class="fas fa-cog"></i>
-                        <span class="menu-label">Settings</span>
-                    </a>
-                </li>
-            </ul>
-        </div>
-        <div class="sidebar-footer">
-            <p class="company-info">Andison Industrial</p>
-            <p class="company-year">© 2025</p>
-        </div>
-    </aside>
+    <?php require __DIR__ . '/sidebar.php'; ?>
 
     <main class="main-content" id="mainContent">
         <div class="warranty-container">
             <!-- Header -->
             <div class="warranty-header">
-                <h1 class="warranty-header-title" style="margin: 0 0 5px 0; color: #ffffff !important; font-size: 28px; font-weight: 700; line-height: 1.2; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);">
-                    <i class="fas fa-wrench" style="color: #f4d03f !important; margin-right: 10px;"></i>
-                    Warranty Replacements
-                </h1>
-                <p class="warranty-header-subtitle" style="color: #d7e2ef !important; margin: 0; font-size: 13px; line-height: 1.5;">
-                    <i class="fas fa-info-circle" style="margin-right: 5px; color: #d7e2ef !important;"></i>
-                    Records flagged with RED text during import
-                </p>
+                <div class="warranty-header-top">
+                    <div>
+                        <h1 class="warranty-header-title" style="margin: 0 0 5px 0; color: #ffffff !important; font-size: 28px; font-weight: 700; line-height: 1.2; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);">
+                            <i class="fas fa-wrench" style="color: #f4d03f !important; margin-right: 10px;"></i>
+                            Warranty Replacements
+                        </h1>
+                        <p class="warranty-header-subtitle" style="color: #d7e2ef !important; margin: 0; font-size: 13px; line-height: 1.5;">
+                            <i class="fas fa-info-circle" style="margin-right: 5px; color: #d7e2ef !important;"></i>
+                            Records flagged with RED text during import
+                        </p>
+                    </div>
+                    <button type="button" class="btn-add-record" onclick="openAddWarrantyModal()">
+                        <i class="fas fa-plus"></i> Add New Record
+                    </button>
+                </div>
             </div>
 
             <!-- Statistics Cards -->
@@ -702,8 +973,14 @@ if ($companies_result) {
                                     </td>
                                     <td class="right-align">
                                         <div class="action-buttons">
-                                            <button class="btn-small" onclick="viewWarrantyDetail(<?php echo $record['id']; ?>)" title="View Details">
+                                            <button class="btn-small btn-view" onclick="viewWarrantyDetail(<?php echo $record['id']; ?>)" title="View Details">
                                                 <i class="fas fa-eye"></i>
+                                            </button>
+                                            <button class="btn-small btn-status" onclick="editWarrantyStatus(<?php echo $record['id']; ?>, '<?php echo htmlspecialchars($record['status'] ?? 'Warranty Pending', ENT_QUOTES); ?>')" title="Update Status">
+                                                <i class="fas fa-pen"></i>
+                                            </button>
+                                            <button class="btn-small btn-delete" onclick="deleteWarrantyRecord(<?php echo $record['id']; ?>)" title="Delete Record">
+                                                <i class="fas fa-trash"></i>
                                             </button>
                                         </div>
                                     </td>
@@ -722,9 +999,374 @@ if ($companies_result) {
         </div>
     </main>
 
+    <div class="modal-overlay" id="addWarrantyModal" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="addWarrantyTitle">
+            <div class="modal-header">
+                <h2 class="modal-title" id="addWarrantyTitle"><i class="fas fa-plus-circle"></i> Add Warranty Record</h2>
+                <button type="button" class="modal-close" onclick="closeAddWarrantyModal()" aria-label="Close modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="addWarrantyForm">
+                    <div class="modal-grid">
+                        <div class="modal-field">
+                            <label for="add_item_code">Item Code *</label>
+                            <input type="text" id="add_item_code" name="item_code" required maxlength="50">
+                        </div>
+                        <div class="modal-field">
+                            <label for="add_item_name">Item Name *</label>
+                            <input type="text" id="add_item_name" name="item_name" required maxlength="255">
+                        </div>
+                        <div class="modal-field">
+                            <label for="add_serial_no">Serial No.</label>
+                            <input type="text" id="add_serial_no" name="serial_no" maxlength="150">
+                        </div>
+                        <div class="modal-field">
+                            <label for="add_company_name">Company *</label>
+                            <input type="text" id="add_company_name" name="company_name" required maxlength="255" list="companySuggestions">
+                        </div>
+                        <div class="modal-field">
+                            <label for="add_quantity">Quantity *</label>
+                            <input type="number" id="add_quantity" name="quantity" min="1" step="1" value="1" required>
+                        </div>
+                        <div class="modal-field">
+                            <label for="add_uom">UOM</label>
+                            <input type="text" id="add_uom" name="uom" maxlength="20" placeholder="pcs / units">
+                        </div>
+                        <div class="modal-field">
+                            <label for="add_status">Status *</label>
+                            <select id="add_status" name="status" required>
+                                <?php foreach ($statuses as $s): ?>
+                                    <option value="<?php echo htmlspecialchars($s); ?>" <?php echo $s === 'Warranty Pending' ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($s); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="modal-field">
+                            <label for="add_warranty_date">Warranty Date *</label>
+                            <input type="date" id="add_warranty_date" name="warranty_date" value="<?php echo date('Y-m-d'); ?>" required>
+                        </div>
+                        <div class="modal-field">
+                            <label for="add_red_text_detected">Red Text Detected</label>
+                            <select id="add_red_text_detected" name="red_text_detected">
+                                <option value="1" selected>Yes</option>
+                                <option value="0">No</option>
+                            </select>
+                        </div>
+                        <div class="modal-field full">
+                            <label for="add_notes">Notes</label>
+                            <textarea id="add_notes" name="notes" maxlength="1000" placeholder="Optional notes"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-reset" onclick="closeAddWarrantyModal()">Cancel</button>
+                        <button type="submit" class="btn-filter" id="addWarrantySubmitBtn"><i class="fas fa-save"></i> Save Record</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <datalist id="companySuggestions">
+        <?php foreach ($companies as $company): ?>
+            <option value="<?php echo htmlspecialchars($company); ?>"></option>
+        <?php endforeach; ?>
+    </datalist>
+
+    <div class="system-alert-overlay" id="systemAlertOverlay" aria-hidden="true">
+        <div class="system-alert-card info" id="systemAlertCard" role="dialog" aria-modal="true" aria-labelledby="systemAlertTitle">
+            <button type="button" class="system-alert-close" id="systemAlertClose" aria-label="Close">&times;</button>
+            <div class="system-alert-icon" id="systemAlertIcon"><i class="fas fa-info"></i></div>
+            <h3 class="system-alert-title" id="systemAlertTitle">Notice</h3>
+            <p class="system-alert-message" id="systemAlertMessage"></p>
+            <div class="system-alert-details" id="systemAlertDetails"></div>
+            <div class="system-alert-select-wrap" id="systemAlertSelectWrap">
+                <select class="system-alert-select" id="systemAlertSelect"></select>
+            </div>
+            <div class="system-alert-actions">
+                <button type="button" class="system-alert-btn system-alert-btn-primary" id="systemAlertConfirmBtn">OK</button>
+                <button type="button" class="system-alert-btn system-alert-btn-cancel" id="systemAlertCancelBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script src="js/app.js"></script>
     <script>
         const ALLOWED_STATUSES = ['Warranty Pending', 'Approved', 'Replaced', 'Cancelled'];
+        const addWarrantyModal = document.getElementById('addWarrantyModal');
+        const addWarrantyForm = document.getElementById('addWarrantyForm');
+        const addWarrantySubmitBtn = document.getElementById('addWarrantySubmitBtn');
+        const systemAlertOverlay = document.getElementById('systemAlertOverlay');
+        const systemAlertCard = document.getElementById('systemAlertCard');
+        const systemAlertIcon = document.getElementById('systemAlertIcon');
+        const systemAlertTitle = document.getElementById('systemAlertTitle');
+        const systemAlertMessage = document.getElementById('systemAlertMessage');
+        const systemAlertConfirmBtn = document.getElementById('systemAlertConfirmBtn');
+        const systemAlertCancelBtn = document.getElementById('systemAlertCancelBtn');
+        const systemAlertClose = document.getElementById('systemAlertClose');
+        const systemAlertSelectWrap = document.getElementById('systemAlertSelectWrap');
+        const systemAlertSelect = document.getElementById('systemAlertSelect');
+        const systemAlertDetails = document.getElementById('systemAlertDetails');
+
+        let alertResolver = null;
+
+        function getAlertMeta(type) {
+            if (type === 'success') {
+                return { icon: 'fa-check', title: 'Success' };
+            }
+            if (type === 'error') {
+                return { icon: 'fa-times', title: 'Error' };
+            }
+            if (type === 'warning') {
+                return { icon: 'fa-exclamation', title: 'Warning' };
+            }
+            return { icon: 'fa-info', title: 'Notice' };
+        }
+
+        function closeSystemAlert(confirmed) {
+            if (!systemAlertOverlay) {
+                return;
+            }
+
+            systemAlertOverlay.classList.remove('show');
+            systemAlertOverlay.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+
+            if (alertResolver) {
+                const payload = {
+                    confirmed,
+                    value: systemAlertSelectWrap.style.display === 'block' ? systemAlertSelect.value : null
+                };
+                alertResolver(payload);
+                alertResolver = null;
+            }
+        }
+
+        function showSystemAlert(options = {}) {
+            const {
+                type = 'info',
+                title = '',
+                message = '',
+                confirmText = 'OK',
+                cancelText = 'Cancel',
+                showCancel = false,
+                showSelect = false,
+                selectOptions = [],
+                selectedValue = '',
+                details = []
+            } = options;
+
+            if (!systemAlertOverlay) {
+                return Promise.resolve({ confirmed: true, value: null });
+            }
+
+            if (alertResolver) {
+                alertResolver({ confirmed: false, value: null });
+                alertResolver = null;
+            }
+
+            const meta = getAlertMeta(type);
+            systemAlertCard.className = `system-alert-card ${type}`;
+            systemAlertIcon.innerHTML = `<i class="fas ${meta.icon}"></i>`;
+            systemAlertTitle.textContent = title || meta.title;
+            systemAlertMessage.textContent = String(message || '');
+            systemAlertConfirmBtn.textContent = confirmText;
+            systemAlertCancelBtn.textContent = cancelText;
+            systemAlertCancelBtn.style.display = showCancel ? 'inline-block' : 'none';
+
+            if (Array.isArray(details) && details.length > 0) {
+                systemAlertDetails.innerHTML = '';
+                details.forEach((row) => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'system-alert-detail-row';
+
+                    const label = document.createElement('div');
+                    label.className = 'system-alert-detail-label';
+                    label.textContent = String(row.label || '-');
+
+                    const value = document.createElement('div');
+                    value.className = 'system-alert-detail-value';
+                    value.textContent = String(row.value || '-');
+
+                    wrapper.appendChild(label);
+                    wrapper.appendChild(value);
+                    systemAlertDetails.appendChild(wrapper);
+                });
+                systemAlertDetails.style.display = 'block';
+            } else {
+                systemAlertDetails.innerHTML = '';
+                systemAlertDetails.style.display = 'none';
+            }
+
+            if (showSelect) {
+                systemAlertSelect.innerHTML = '';
+                selectOptions.forEach((option) => {
+                    const opt = document.createElement('option');
+                    opt.value = option;
+                    opt.textContent = option;
+                    systemAlertSelect.appendChild(opt);
+                });
+                if (selectedValue && selectOptions.includes(selectedValue)) {
+                    systemAlertSelect.value = selectedValue;
+                }
+                systemAlertSelectWrap.style.display = 'block';
+            } else {
+                systemAlertSelectWrap.style.display = 'none';
+            }
+
+            systemAlertOverlay.classList.add('show');
+            systemAlertOverlay.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+
+            setTimeout(() => {
+                if (showSelect) {
+                    systemAlertSelect.focus();
+                } else {
+                    systemAlertConfirmBtn.focus();
+                }
+            }, 0);
+
+            return new Promise((resolve) => {
+                alertResolver = resolve;
+            });
+        }
+
+        async function showAppMessage(message, type = 'info') {
+            await showSystemAlert({
+                type,
+                message,
+                confirmText: 'Continue',
+                showCancel: false
+            });
+        }
+
+        systemAlertConfirmBtn.addEventListener('click', () => closeSystemAlert(true));
+        systemAlertCancelBtn.addEventListener('click', () => closeSystemAlert(false));
+        systemAlertClose.addEventListener('click', () => closeSystemAlert(false));
+        systemAlertOverlay.addEventListener('click', (event) => {
+            if (event.target === systemAlertOverlay) {
+                closeSystemAlert(false);
+            }
+        });
+
+        // Force native browser dialogs to use system-styled modal dialogs.
+        window.alert = function(message) {
+            return showSystemAlert({
+                type: 'info',
+                message: String(message || ''),
+                confirmText: 'OK',
+                showCancel: false
+            });
+        };
+
+        window.confirm = async function(message) {
+            const result = await showSystemAlert({
+                type: 'warning',
+                title: 'Please Confirm',
+                message: String(message || ''),
+                confirmText: 'Continue',
+                cancelText: 'Cancel',
+                showCancel: true
+            });
+            return !!result.confirmed;
+        };
+
+        function openAddWarrantyModal() {
+            if (!addWarrantyModal) {
+                return;
+            }
+
+            addWarrantyModal.classList.add('show');
+            addWarrantyModal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+            const firstInput = document.getElementById('add_item_code');
+            if (firstInput) {
+                firstInput.focus();
+            }
+        }
+
+        function closeAddWarrantyModal() {
+            if (!addWarrantyModal) {
+                return;
+            }
+
+            addWarrantyModal.classList.remove('show');
+            addWarrantyModal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+            if (addWarrantyForm) {
+                addWarrantyForm.reset();
+                document.getElementById('add_quantity').value = '1';
+                document.getElementById('add_red_text_detected').value = '1';
+                document.getElementById('add_status').value = 'Warranty Pending';
+                document.getElementById('add_warranty_date').value = '<?php echo date('Y-m-d'); ?>';
+            }
+        }
+
+        if (addWarrantyModal) {
+            addWarrantyModal.addEventListener('click', (event) => {
+                if (event.target === addWarrantyModal) {
+                    closeAddWarrantyModal();
+                }
+            });
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && addWarrantyModal && addWarrantyModal.classList.contains('show')) {
+                closeAddWarrantyModal();
+            }
+        });
+
+        if (addWarrantyForm) {
+            addWarrantyForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+
+                const formData = new FormData(addWarrantyForm);
+                const payload = {
+                    item_code: (formData.get('item_code') || '').toString().trim(),
+                    item_name: (formData.get('item_name') || '').toString().trim(),
+                    serial_no: (formData.get('serial_no') || '').toString().trim(),
+                    company_name: (formData.get('company_name') || '').toString().trim(),
+                    quantity: Number(formData.get('quantity')) || 0,
+                    uom: (formData.get('uom') || '').toString().trim(),
+                    status: (formData.get('status') || 'Warranty Pending').toString(),
+                    warranty_date: (formData.get('warranty_date') || '').toString(),
+                    red_text_detected: Number(formData.get('red_text_detected')) === 1 ? 1 : 0,
+                    notes: (formData.get('notes') || '').toString().trim()
+                };
+
+                if (!payload.item_code || !payload.item_name || !payload.company_name || payload.quantity <= 0) {
+                    await showAppMessage('Please complete all required fields.', 'error');
+                    return;
+                }
+
+                addWarrantySubmitBtn.disabled = true;
+                addWarrantySubmitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+                try {
+                    const response = await fetch('api/add-warranty-record.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const data = await response.json();
+                    if (data.success) {
+                        await showAppMessage('Warranty record added successfully.', 'success');
+                        closeAddWarrantyModal();
+                        location.reload();
+                    } else {
+                        await showAppMessage('Error: ' + (data.message || 'Unable to add warranty record'), 'error');
+                    }
+                } catch (error) {
+                    await showAppMessage('Error adding warranty record: ' + error.message, 'error');
+                } finally {
+                    addWarrantySubmitBtn.disabled = false;
+                    addWarrantySubmitBtn.innerHTML = '<i class="fas fa-save"></i> Save Record';
+                }
+            });
+        }
 
         function viewWarrantyDetail(warrantId) {
             // Fetch warranty details and show in modal
@@ -734,44 +1376,62 @@ if ($companies_result) {
                     if (data.success) {
                         showWarrantyDetailModal(data.warranty);
                     } else {
-                        alert('Error: ' + data.message);
+                        showAppMessage('Error: ' + data.message, 'error');
                     }
                 })
-                .catch(err => alert('Error loading warranty details: ' + err.message));
+                .catch(err => showAppMessage('Error loading warranty details: ' + err.message, 'error'));
         }
 
         function showWarrantyDetailModal(warranty) {
-            const lines = [
-                `Item Code: ${warranty.item_code || '-'}`,
-                `Item Name: ${warranty.item_name || '-'}`,
-                `Serial No.: ${warranty.serial_no || '-'}`,
-                `Company: ${warranty.company_name || '-'}`,
-                `Quantity: ${warranty.quantity || 0} ${warranty.uom || ''}`,
-                `Warranty Date: ${warranty.warranty_date ? new Date(warranty.warranty_date).toLocaleDateString() : '-'}`,
-                `Status: ${warranty.status || '-'}`
+            const details = [
+                { label: 'Item Code', value: warranty.item_code || '-' },
+                { label: 'Item Name', value: warranty.item_name || '-' },
+                { label: 'Serial No.', value: warranty.serial_no || '-' },
+                { label: 'Company', value: warranty.company_name || '-' },
+                { label: 'Quantity', value: `${warranty.quantity || 0} ${warranty.uom || ''}`.trim() },
+                { label: 'Warranty Date', value: warranty.warranty_date ? new Date(warranty.warranty_date).toLocaleDateString() : '-' },
+                { label: 'Status', value: warranty.status || '-' }
             ];
 
             if (warranty.notes) {
-                lines.push(`Notes: ${warranty.notes}`);
+                details.push({ label: 'Notes', value: warranty.notes });
             }
 
-            alert(lines.join('\n'));
+            showSystemAlert({
+                type: 'info',
+                title: 'Warranty Details',
+                message: 'Record information:',
+                details,
+                confirmText: 'Close',
+                showCancel: false
+            });
         }
 
         function editWarrantyStatus(warrantId, currentStatus) {
-            const statusList = ALLOWED_STATUSES
-                .filter(s => s !== currentStatus)
-                .map(s => `${ALLOWED_STATUSES.indexOf(s) + 1}. ${s}`)
-                .join('\n');
-            
-            const prompt_text = `Update warranty status for ID ${warrantId}\n\nCurrent Status: ${currentStatus}\n\nAvailable Statuses:\n${statusList}`;
-            const response = prompt(prompt_text, currentStatus);
-            
-            if (response && response !== currentStatus && ALLOWED_STATUSES.includes(response)) {
-                updateWarrantyStatus(warrantId, response);
-            } else if (response && response !== currentStatus) {
-                alert('Invalid status selected');
-            }
+            showSystemAlert({
+                type: 'info',
+                title: 'Update Status',
+                message: `Select the new status for warranty record #${warrantId}.`,
+                confirmText: 'Save Status',
+                cancelText: 'Cancel',
+                showCancel: true,
+                showSelect: true,
+                selectOptions: ALLOWED_STATUSES,
+                selectedValue: currentStatus
+            }).then((result) => {
+                if (!result.confirmed) {
+                    return;
+                }
+
+                const newStatus = result.value;
+                if (newStatus && newStatus !== currentStatus && ALLOWED_STATUSES.includes(newStatus)) {
+                    updateWarrantyStatus(warrantId, newStatus);
+                } else if (newStatus === currentStatus) {
+                    showAppMessage('Status is already set to that value.', 'info');
+                } else {
+                    showAppMessage('Invalid status selected', 'error');
+                }
+            });
         }
 
         function updateWarrantyStatus(warrantId, newStatus) {
@@ -786,15 +1446,39 @@ if ($companies_result) {
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    alert('✅ Status updated successfully');
+                    showAppMessage('Status updated successfully', 'success');
                     // Reload page to show updated status
                     setTimeout(() => location.reload(), 500);
                 } else {
-                    alert('❌ Error: ' + data.message);
+                    showAppMessage('Error: ' + data.message, 'error');
                 }
             })
-            .catch(err => alert('Error updating status: ' + err.message));
+            .catch(err => showAppMessage('Error updating status: ' + err.message, 'error'));
+        }
+
+        async function deleteWarrantyRecord(warrantId) {
+            const ok = await window.confirm('Delete warranty record #' + warrantId + '? This cannot be undone.');
+            if (!ok) {
+                return;
+            }
+
+            fetch('api/delete-warranty-record.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: warrantId })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showAppMessage('Warranty record deleted successfully', 'success');
+                    setTimeout(() => location.reload(), 450);
+                } else {
+                    showAppMessage('Error: ' + data.message, 'error');
+                }
+            })
+            .catch(err => showAppMessage('Error deleting record: ' + err.message, 'error'));
         }
     </script>
 </body>
 </html>
+

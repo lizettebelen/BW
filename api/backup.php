@@ -22,114 +22,50 @@ try {
     $timestamp = date('Y-m-d_H-i-s');
     $backup_file = $backup_dir . '/backup_' . $timestamp . '.sql';
 
-    // Check if we're using MySQL or SQLite
-    if ($conn instanceof mysqli) {
-        // MySQL backup using mysqldump
-        $db_name = 'bw_gas_detector';
-        $db_user = 'root';
-        $db_pass = '';
-        $db_host = 'localhost';
+    // MySQL backup using mysqldump
+    $db_name = 'bw_gas_detector';
+    $db_user = 'root';
+    $db_pass = '';
+    $db_host = 'localhost';
 
-        // Build mysqldump command
+    $command = sprintf(
+        'mysqldump -h %s -u %s %s > %s 2>&1',
+        escapeshellarg($db_host),
+        escapeshellarg($db_user),
+        escapeshellarg($db_name),
+        escapeshellarg($backup_file)
+    );
+
+    if (!empty($db_pass)) {
         $command = sprintf(
-            'mysqldump -h %s -u %s %s %s > %s 2>&1',
+            'mysqldump -h %s -u %s -p%s %s > %s 2>&1',
             escapeshellarg($db_host),
             escapeshellarg($db_user),
-            ($db_pass ? '-p' . escapeshellarg($db_pass) : ''),
+            escapeshellarg($db_pass),
             escapeshellarg($db_name),
             escapeshellarg($backup_file)
         );
+    }
 
-        // If password is empty, adjust command
-        if (empty($db_pass)) {
-            $command = sprintf(
-                'mysqldump -h %s -u %s %s > %s 2>&1',
-                escapeshellarg($db_host),
-                escapeshellarg($db_user),
-                escapeshellarg($db_name),
-                escapeshellarg($backup_file)
-            );
-        }
+    $output = null;
+    $return_var = null;
+    exec($command, $output, $return_var);
 
-        // Execute backup
-        $output = null;
-        $return_var = null;
-        exec($command, $output, $return_var);
+    if ($return_var !== 0) {
+        throw new Exception('mysqldump failed: ' . implode("\n", $output));
+    }
 
-        if ($return_var !== 0) {
-            throw new Exception('mysqldump failed: ' . implode("\n", $output));
-        }
-
-        // Verify backup file exists and has content
-        if (!file_exists($backup_file) || filesize($backup_file) === 0) {
-            throw new Exception('Backup file is empty or could not be created');
-        }
-
-    } else {
-        // SQLite backup - copy the database file
-        $sqlite_file = __DIR__ . '/../bw_gas_detector.sqlite';
-        if (!file_exists($sqlite_file)) {
-            throw new Exception('SQLite database file not found');
-        }
-
-        // For SQLite, export as SQL dump
-        $sql_dump = fopen($backup_file, 'w');
-        if ($sql_dump === false) {
-            throw new Exception('Could not create backup file');
-        }
-
-        // Get all tables and data
-        fwrite($sql_dump, "-- SQLite Database Backup\n");
-        fwrite($sql_dump, "-- Created: " . date('Y-m-d H:i:s') . "\n\n");
-
-        // Get all tables
-        $tables_query = "SELECT name FROM sqlite_master WHERE type='table'";
-        $result = $conn->query($tables_query);
-
-        while ($table = $result->fetch_assoc()) {
-            $table_name = $table['name'];
-
-            // Get CREATE TABLE statement
-            $create_query = "SELECT sql FROM sqlite_master WHERE type='table' AND name = '" . $table_name . "'";
-            $create_result = $conn->query($create_query);
-            if ($create_row = $create_result->fetch_assoc()) {
-                fwrite($sql_dump, $create_row['sql'] . ";\n\n");
-            }
-
-            // Get table data
-            $data_query = "SELECT * FROM " . $table_name;
-            $data_result = $conn->query($data_query);
-            
-            while ($row = $data_result->fetch_assoc()) {
-                $values = array_map(function($v) {
-                    return $v === null ? 'NULL' : "'" . addslashes($v) . "'";
-                }, array_values($row));
-                
-                $cols = implode(', ', array_keys($row));
-                fwrite($sql_dump, "INSERT INTO " . $table_name . " (" . $cols . ") VALUES (" . implode(", ", $values) . ");\n");
-            }
-            fwrite($sql_dump, "\n");
-        }
-
-        fclose($sql_dump);
+    if (!file_exists($backup_file) || filesize($backup_file) === 0) {
+        throw new Exception('Backup file is empty or could not be created');
     }
 
     // Save backup timestamp to database
     $backup_date = date('Y-m-d H:i:s');
     
     // Check if settings table exists and update it
-    $tables_query = "SHOW TABLES LIKE 'settings'" . (isset($conn) && !($conn instanceof mysqli) ? " COLLATE NOCASE" : "");
-    
-    // Try to update settings table if it exists
     try {
-        // For both MySQL and SQLite
-        if ($conn instanceof mysqli) {
-            $settings_check = $conn->query("SHOW TABLES LIKE 'settings'");
-            $table_exists = $settings_check && $settings_check->num_rows > 0;
-        } else {
-            $settings_check = $conn->query("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'");
-            $table_exists = $settings_check && $settings_check->num_rows > 0;
-        }
+        $settings_check = $conn->query("SHOW TABLES LIKE 'settings'");
+        $table_exists = $settings_check && $settings_check->num_rows > 0;
 
         if ($table_exists) {
             $update_query = "UPDATE settings SET last_backup = '" . date('Y-m-d H:i:s') . "' LIMIT 1";

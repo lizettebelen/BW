@@ -986,7 +986,7 @@ try {
                     $warranty_stmt = $conn->prepare($warranty_sql);
                     if ($warranty_stmt) {
                         $warranty_stmt->bind_param(
-                            'issiiisssssissssssisi',
+                            'issiiissssssissssssisi',
                             $last_id,
                             $invoice_no,
                             $serial_no,

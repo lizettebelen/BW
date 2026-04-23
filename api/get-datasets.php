@@ -6,19 +6,9 @@ try {
     if (!$conn) throw new Exception('Database connection failed');
 
     // Ensure dataset_name column exists
-    $isMysql = ($conn instanceof mysqli);
     $colExists = false;
-    if ($isMysql) {
-        $chk = $conn->query("SHOW COLUMNS FROM delivery_records LIKE 'dataset_name'");
-        $colExists = ($chk && $chk->num_rows > 0);
-    } else {
-        $chk = $conn->query("PRAGMA table_info(delivery_records)");
-        if ($chk) {
-            while ($r = $chk->fetch_assoc()) {
-                if (strtolower($r['name']) === 'dataset_name') { $colExists = true; break; }
-            }
-        }
-    }
+    $chk = $conn->query("SHOW COLUMNS FROM delivery_records LIKE 'dataset_name'");
+    $colExists = ($chk && $chk->num_rows > 0);
     if (!$colExists) {
         $conn->query("ALTER TABLE delivery_records ADD COLUMN dataset_name VARCHAR(50) DEFAULT NULL");
     }

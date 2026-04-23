@@ -11,33 +11,25 @@ require_once __DIR__ . '/../db_config.php';
 
 try {
     // Check if column exists
-    $result = $conn->query("PRAGMA table_info(delivery_records)");
-    $columnExists = false;
-    if ($result) {
-        while ($row = $result->fetch_assoc()) {
-            if ($row['name'] === 'delivery_year') {
-                $columnExists = true;
-                break;
-            }
-        }
-    }
+    $result = $conn->query("SHOW COLUMNS FROM delivery_records LIKE 'delivery_year'");
+    $columnExists = ($result && $result->num_rows > 0);
     
     if (!$columnExists) {
-        // Add the column (SQLite compatible)
+        // Add the column
         $sql = "ALTER TABLE delivery_records ADD COLUMN delivery_year INTEGER DEFAULT NULL";
         $conn->query($sql);
     }
     
     // Update existing records with year from delivery_date first
     $updated1 = 0;
-    $result = $conn->query("UPDATE delivery_records SET delivery_year = CAST(strftime('%Y', delivery_date) AS INTEGER) WHERE (delivery_year IS NULL OR delivery_year = 0) AND delivery_date IS NOT NULL AND delivery_date != ''");
+    $result = $conn->query("UPDATE delivery_records SET delivery_year = YEAR(delivery_date) WHERE (delivery_year IS NULL OR delivery_year = 0) AND delivery_date IS NOT NULL AND delivery_date != ''");
     if ($result) {
         $updated1 = $conn->affected_rows ?? 0;
     }
     
     // For records without delivery_date, use created_at
     $updated2 = 0;
-    $result = $conn->query("UPDATE delivery_records SET delivery_year = CAST(strftime('%Y', created_at) AS INTEGER) WHERE (delivery_year IS NULL OR delivery_year = 0) AND created_at IS NOT NULL");
+    $result = $conn->query("UPDATE delivery_records SET delivery_year = YEAR(created_at) WHERE (delivery_year IS NULL OR delivery_year = 0) AND created_at IS NOT NULL");
     if ($result) {
         $updated2 = $conn->affected_rows ?? 0;
     }

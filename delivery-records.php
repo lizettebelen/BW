@@ -152,8 +152,11 @@ if ($selected_dataset !== 'all' && $selected_dataset !== '') {
     $dataset_filter = " AND dataset_name = '$safe_dataset'";
 }
 
+$owner_user_id = intval($_SESSION['user_id'] ?? 0);
+$owner_filter = "owner_user_id = {$owner_user_id} AND ";
+
 // Delivery Records page should never include inquiry/order staging rows or Andison Manila transfers.
-$delivery_where = "company_name != 'Orders' AND NOT (
+$delivery_where = "{$owner_filter}company_name != 'Orders' AND NOT (
     LOWER(TRIM(COALESCE(company_name, ''))) IN ('andison manila', 'to andison manila')
     OR LOWER(TRIM(COALESCE(transferred_to, ''))) IN ('andison manila', 'to andison manila')
     OR LOWER(TRIM(COALESCE(sold_to, ''))) IN ('andison manila', 'to andison manila')
@@ -203,7 +206,7 @@ if ($result) {
 // Get distinct dataset names (data1, data2, ...)
 $datasets = [];
 try {
-    $dsResult = $conn->query("SELECT DISTINCT dataset_name FROM delivery_records WHERE dataset_name IS NOT NULL AND dataset_name != '' ORDER BY dataset_name ASC");
+    $dsResult = $conn->query("SELECT DISTINCT dataset_name FROM delivery_records WHERE owner_user_id = {$owner_user_id} AND dataset_name IS NOT NULL AND dataset_name != '' ORDER BY dataset_name ASC");
     if ($dsResult) {
         while ($row = $dsResult->fetch_assoc()) {
             $datasets[] = $row['dataset_name'];
@@ -218,7 +221,8 @@ $allItems = [];
 $itemResult = $conn->query("
     SELECT DISTINCT item_code, item_name
     FROM delivery_records
-    WHERE item_code IS NOT NULL 
+        WHERE owner_user_id = {$owner_user_id}
+            AND item_code IS NOT NULL 
       AND item_code != ''
       AND item_name IS NOT NULL
       AND item_name != ''
@@ -246,7 +250,8 @@ if (empty($allItems)) {
     $inventoryResult = $conn->query("
         SELECT DISTINCT item_code, item_name
         FROM delivery_records
-        WHERE company_name = 'Stock Addition'
+                WHERE owner_user_id = {$owner_user_id}
+                    AND company_name = 'Stock Addition'
           AND item_code IS NOT NULL 
           AND item_code != ''
           AND item_name IS NOT NULL
@@ -1556,122 +1561,7 @@ if (empty($allItems)) {
     </nav>
 
     <!-- SIDEBAR -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-content">
-            <!-- Sidebar Menu -->
-            <ul class="sidebar-menu">
-                <!-- Dashboard -->
-                <li class="menu-item">
-                    <a href="index.php" class="menu-link">
-                        <i class="fas fa-chart-line"></i>
-                        <span class="menu-label">Dashboard</span>
-                    </a>
-                </li>
-
-                <!-- Sales Overview -->
-                <li class="menu-item">
-                    <a href="sales-overview.php" class="menu-link">
-                        <i class="fas fa-chart-pie"></i>
-                        <span class="menu-label">Sales Overview</span>
-                    </a>
-                </li>
-
-                <!-- Sales Records -->
-                <li class="menu-item">
-                    <a href="sales-records.php" class="menu-link">
-                        <i class="fas fa-calendar-alt"></i>
-                        <span class="menu-label">Sales Records</span>
-                    </a>
-                </li>
-
-                <!-- Inquiry -->
-                <li class="menu-item">
-                    <a href="inquiry.php" class="menu-link">
-                        <i class="fas fa-file-invoice"></i>
-                        <span class="menu-label">Inquiry</span>
-                    </a>
-                </li>
-
-                <!-- Delivery Records -->
-                <li class="menu-item active">
-                    <a href="delivery-records.php" class="menu-link">
-                        <i class="fas fa-truck"></i>
-                        <span class="menu-label">Delivery Records</span>
-                    </a>
-                </li>
-
-                <!-- Inventory -->
-                <li class="menu-item">
-                    <a href="inventory.php" class="menu-link">
-                        <i class="fas fa-boxes"></i>
-                        <span class="menu-label">Inventory</span>
-                    </a>
-                </li>
-
-                <!-- Andison Manila -->
-                <li class="menu-item">
-                    <a href="andison-manila.php" class="menu-link">
-                        <i class="fas fa-truck-fast"></i>
-                        <span class="menu-label">Andison Manila</span>
-                    </a>
-                </li>
-
-                <!-- Client Companies -->
-                <li class="menu-item">
-                    <a href="client-companies.php" class="menu-link">
-                        <i class="fas fa-building"></i>
-                        <span class="menu-label">Client Companies</span>
-                    </a>
-                </li>
-
-                <!-- Models -->
-                <li class="menu-item">
-                    <a href="models.php" class="menu-link">
-                        <i class="fas fa-cube"></i>
-                        <span class="menu-label">Models</span>
-                    </a>
-                </li>
-
-                <!-- Reports -->
-                <li class="menu-item">
-                    <a href="reports.php" class="menu-link">
-                        <i class="fas fa-file-alt"></i>
-                        <span class="menu-label">Reports</span>
-                    </a>
-                </li>
-
-                <!-- Upload Data -->
-                <li class="menu-item">
-                    <a href="upload-data.php" class="menu-link">
-                        <i class="fas fa-upload"></i>
-                        <span class="menu-label">Upload Data</span>
-                    </a>
-                </li>
-
-                <!-- Warranty Items -->
-                <li class="menu-item">
-                    <a href="warranty-replacements.php" class="menu-link">
-                        <i class="fas fa-wrench"></i>
-                        <span class="menu-label">Warranty Items</span>
-                    </a>
-                </li>
-
-                <!-- Settings -->
-                <li class="menu-item">
-                    <a href="settings.php" class="menu-link">
-                        <i class="fas fa-cog"></i>
-                        <span class="menu-label">Settings</span>
-                    </a>
-                </li>
-            </ul>
-        </div>
-
-        <!-- Sidebar Footer -->
-        <div class="sidebar-footer">
-            <p class="company-info">Andison Industrial</p>
-            <p class="company-year">© 2025</p>
-        </div>
-    </aside>
+    <?php require __DIR__ . '/sidebar.php'; ?>
 
     <!-- MAIN CONTENT -->
     <main class="main-content" id="mainContent">
@@ -4055,3 +3945,4 @@ if (empty($allItems)) {
     </div>
 </body>
 </html>
+

@@ -99,21 +99,34 @@ if ($token) {
             font-size: 16px;
             line-height: 1.6;
             margin-bottom: 30px;
+            max-width: 360px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .result-card .login-title {
+            text-align: center;
+            margin-bottom: 12px;
         }
         .action-buttons {
             display: flex;
             flex-direction: column;
             gap: 12px;
+            width: 100%;
+            max-width: 360px;
+            margin: 0 auto;
         }
         .btn-action {
-            display: inline-block;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
             padding: 14px 30px;
             border-radius: 10px;
             text-decoration: none;
             font-weight: 600;
             font-size: 14px;
             transition: all 0.3s ease;
-            text-align: center;
         }
         .btn-primary {
             background: linear-gradient(135deg, #f4d03f, #ffd60a);

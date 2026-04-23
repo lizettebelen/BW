@@ -10,7 +10,8 @@ require_once 'db_config.php';
 $totalRecords = 0;
 
 if ($conn) {
-    $result = @$conn->query("SELECT COUNT(*) as total FROM delivery_records");
+    $owner_user_id = intval($_SESSION['user_id'] ?? 0);
+    $result = @$conn->query("SELECT COUNT(*) as total FROM delivery_records WHERE owner_user_id = {$owner_user_id}");
     if ($result) {
         $row = $result->fetch_assoc();
         if ($row && isset($row['total'])) {
@@ -1074,121 +1075,7 @@ if ($conn) {
     </nav>
 
     <!-- SIDEBAR -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-content">
-            <!-- Sidebar Menu -->
-            <ul class="sidebar-menu">
-                <!-- Dashboard -->
-                <li class="menu-item">
-                    <a href="index.php" class="menu-link">
-                        <i class="fas fa-chart-line"></i>
-                        <span class="menu-label">Dashboard</span>
-                    </a>
-                </li>
-
-                <!-- Sales Overview -->
-                <li class="menu-item">
-                    <a href="sales-overview.php" class="menu-link">
-                        <i class="fas fa-chart-pie"></i>
-                        <span class="menu-label">Sales Overview</span>
-                    </a>
-                </li>
-
-                <!-- Sales Records -->
-                <li class="menu-item">
-                    <a href="sales-records.php" class="menu-link">
-                        <i class="fas fa-calendar-alt"></i>
-                        <span class="menu-label">Sales Records</span>
-                    </a>
-                </li>
-
-                <li class="menu-item">
-                    <a href="inquiry.php" class="menu-link">
-                        <i class="fas fa-file-invoice"></i>
-                        <span class="menu-label">Inquiry</span>
-                    </a>
-                </li>
-
-                <!-- Delivery Records -->
-                <li class="menu-item">
-                    <a href="delivery-records.php" class="menu-link">
-                        <i class="fas fa-truck"></i>
-                        <span class="menu-label">Delivery Records</span>
-                    </a>
-                </li>
-
-                <!-- Inventory -->
-                <li class="menu-item">
-                    <a href="inventory.php" class="menu-link">
-                        <i class="fas fa-boxes"></i>
-                        <span class="menu-label">Inventory</span>
-                    </a>
-                </li>
-
-                <!-- Andison Manila -->
-                <li class="menu-item">
-                    <a href="andison-manila.php" class="menu-link">
-                        <i class="fas fa-truck-fast"></i>
-                        <span class="menu-label">Andison Manila</span>
-                    </a>
-                </li>
-
-                <!-- Client Companies -->
-                <li class="menu-item">
-                    <a href="client-companies.php" class="menu-link">
-                        <i class="fas fa-building"></i>
-                        <span class="menu-label">Client Companies</span>
-                    </a>
-                </li>
-
-                <!-- Models -->
-                <li class="menu-item">
-                    <a href="models.php" class="menu-link">
-                        <i class="fas fa-cube"></i>
-                        <span class="menu-label">Models</span>
-                    </a>
-                </li>
-
-                <!-- Reports -->
-                <li class="menu-item">
-                    <a href="reports.php" class="menu-link">
-                        <i class="fas fa-file-alt"></i>
-                        <span class="menu-label">Reports</span>
-                    </a>
-                </li>
-
-                <!-- Upload Data (NEW) -->
-                <li class="menu-item active">
-                    <a href="upload-data.php" class="menu-link">
-                        <i class="fas fa-upload"></i>
-                        <span class="menu-label">Upload Data</span>
-                    </a>
-                </li>
-
-                <!-- Warranty Replacements -->
-                <li class="menu-item">
-                    <a href="warranty-replacements.php" class="menu-link">
-                        <i class="fas fa-wrench"></i>
-                        <span class="menu-label">Warranty Items</span>
-                    </a>
-                </li>
-
-                <!-- Settings -->
-                <li class="menu-item">
-                    <a href="settings.php" class="menu-link">
-                        <i class="fas fa-cog"></i>
-                        <span class="menu-label">Settings</span>
-                    </a>
-                </li>
-            </ul>
-        </div>
-
-        <!-- Sidebar Footer -->
-        <div class="sidebar-footer">
-            <p class="company-info">Andison Industrial</p>
-            <p class="company-year">© 2025</p>
-        </div>
-    </aside>
+    <?php require __DIR__ . '/sidebar.php'; ?>
 
     <!-- MAIN CONTENT -->
     <main class="main-content" id="mainContent">
@@ -1558,10 +1445,20 @@ if ($conn) {
                         </p>
                         <p class="delete-section-subtitle" style="font-size: 12px;">Choose which datasets to remove and start fresh</p>
                     </div>
+                    <button id="deleteAllDataBtn" type="button" onclick="showDeleteAllDataConfirm()" style="background: linear-gradient(135deg, #c62828 0%, #a61e1e 100%); color: #fff; padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 14px; font-family: 'Poppins', sans-serif; transition: all 0.3s ease; display: flex; align-items: center; gap: 10px; white-space: nowrap; position: relative; z-index: 10; box-shadow: 0 4px 16px rgba(166, 30, 30, 0.35);">
+                        <i class="fas fa-bomb"></i> Delete All Data
+                    </button>
                     <button id="deleteAllBtn" type="button" onclick="showDeleteModal()" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: #fff; padding: 12px 25px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; font-family: 'Poppins', sans-serif; transition: all 0.3s ease; display: flex; align-items: center; gap: 10px; white-space: nowrap; position: relative; z-index: 10;">
                         <i class="fas fa-trash-alt"></i> Manage Data
                     </button>
                     <style>
+                        button[onclick="showDeleteAllDataConfirm()"]:hover {
+                            transform: translateY(-2px);
+                            box-shadow: 0 8px 24px rgba(166, 30, 30, 0.45);
+                        }
+                        button[onclick="showDeleteAllDataConfirm()"]:active {
+                            transform: translateY(0);
+                        }
                         button[onclick="showDeleteModal()"]:hover {
                             transform: translateY(-2px);
                             box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
@@ -1605,6 +1502,7 @@ if ($conn) {
         let workbookSheets = {}; // Store workbook sheets for selection
         let previewCharts = {}; // Store chart instances
         let pendingDeleteDatasets = [];
+        let pendingDeleteAll = false;
         let dotAnimationInterval = null;
         let loaderStartTime = null;
         let warrantyRowsMap = {}; // Map of filename -> array of warranty row indices
@@ -3152,6 +3050,17 @@ if ($conn) {
             loadDatasetsForDeletion();
         }
 
+        function showDeleteAllDataConfirm() {
+            pendingDeleteAll = true;
+            pendingDeleteDatasets = ['ALL DATA (Datasets + Manual/Encoded + Warranty + Related Records)'];
+
+            const rawCount = document.getElementById('currentRecordCount')?.textContent || '0';
+            const parsedCount = parseInt(String(rawCount).replace(/,/g, ''), 10);
+            const safeCount = Number.isFinite(parsedCount) ? parsedCount : 0;
+
+            showDeleteConfirmModal(pendingDeleteDatasets, safeCount);
+        }
+
         // Load datasets for deletion
         function loadDatasetsForDeletion() {
             const listDiv = document.getElementById('deleteDatasetsList');
@@ -3201,6 +3110,7 @@ if ($conn) {
 
         // Confirm delete selected datasets
         function confirmDeleteSelected() {
+            const allCheckboxes = document.querySelectorAll('#deleteDatasetsList input[type="checkbox"]');
             const checkboxes = document.querySelectorAll('#deleteDatasetsList input[type="checkbox"]:checked');
             
             if (checkboxes.length === 0) {
@@ -3213,6 +3123,8 @@ if ($conn) {
                 return sum + parseInt(cb.dataset.count || '0', 10);
             }, 0);
 
+            pendingDeleteAll = (allCheckboxes.length > 0 && checkboxes.length === allCheckboxes.length);
+
             showDeleteConfirmModal(selectedDatasets, totalRecords);
         }
 
@@ -3222,7 +3134,11 @@ if ($conn) {
             const list = document.getElementById('deleteConfirmList');
             const modal = document.getElementById('deleteConfirmModal');
 
-            message.textContent = `Delete ${datasets.length} dataset(s) with ${recordCount.toLocaleString()} record(s)? This action cannot be undone.`;
+            if (pendingDeleteAll) {
+                message.textContent = `Delete ALL system data (${recordCount.toLocaleString()} tagged records + manual/encoded data, warranty items, and related records)? This action cannot be undone.`;
+            } else {
+                message.textContent = `Delete ${datasets.length} dataset(s) with ${recordCount.toLocaleString()} record(s)? This action cannot be undone.`;
+            }
             list.innerHTML = datasets.map(name => `<div style="padding: 6px 0; border-bottom: 1px dashed rgba(255,255,255,0.1);">• ${name}</div>`).join('');
             modal.classList.add('show');
         }
@@ -3236,6 +3152,7 @@ if ($conn) {
             proceedBtn.disabled = false;
             cancelBtn.disabled = false;
             proceedBtn.innerHTML = '<i class="fas fa-trash-alt"></i> Delete Permanently';
+            pendingDeleteAll = false;
         }
 
         function confirmDeleteFromModal() {
@@ -3252,11 +3169,50 @@ if ($conn) {
             proceedBtn.innerHTML = '<span class="spinner"></span> Deleting...';
             showLoadingOverlay(true, 'Deleting');
 
-            deleteSelectedDatasets(pendingDeleteDatasets)
+            const deletionPromise = pendingDeleteAll
+                ? deleteAllSystemData()
+                : deleteSelectedDatasets(pendingDeleteDatasets);
+
+            deletionPromise
                 .finally(() => {
                     showLoadingOverlay(false);
                     closeDeleteConfirmModal();
                 });
+        }
+
+        function deleteAllSystemData() {
+            showAlert('info', 'Deleting all system data... Please wait.');
+            const confirmBtn = document.getElementById('confirmDeleteBtn');
+            if (confirmBtn) {
+                confirmBtn.disabled = true;
+            }
+
+            return fetch('api/delete-all-records.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scope: 'all' })
+            })
+            .then(r => r.json())
+            .then(result => {
+                if (confirmBtn) {
+                    confirmBtn.disabled = false;
+                }
+
+                if (result.success) {
+                    const deletedCount = Number(result.deleted_count || 0);
+                    showAlert('success', `All system data deleted successfully (${deletedCount.toLocaleString()} records removed). Reloading...`);
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showAlert('error', 'Error: ' + (result.message || 'Failed to delete all system data'));
+                }
+            })
+            .catch(error => {
+                if (confirmBtn) {
+                    confirmBtn.disabled = false;
+                }
+                showAlert('error', 'Error: ' + error.message);
+                console.error('Full deletion error:', error);
+            });
         }
 
         // Delete selected datasets
@@ -3926,3 +3882,4 @@ if ($conn) {
     </script>
 </body>
 </html>
+

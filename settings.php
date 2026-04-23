@@ -526,121 +526,7 @@ if (empty($_SESSION['user_id'])) {
     </nav>
 
     <!-- SIDEBAR -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-content">
-            <!-- Sidebar Menu -->
-            <ul class="sidebar-menu">
-                <!-- Dashboard -->
-                <li class="menu-item">
-                    <a href="index.php" class="menu-link">
-                        <i class="fas fa-chart-line"></i>
-                        <span class="menu-label">Dashboard</span>
-                    </a>
-                </li>
-
-                <!-- Sales Overview -->
-                <li class="menu-item">
-                    <a href="sales-overview.php" class="menu-link">
-                        <i class="fas fa-chart-pie"></i>
-                        <span class="menu-label">Sales Overview</span>
-                    </a>
-                </li>
-
-                <!-- Sales Records -->
-                <li class="menu-item">
-                    <a href="sales-records.php" class="menu-link">
-                        <i class="fas fa-calendar-alt"></i>
-                        <span class="menu-label">Sales Records</span>
-                    </a>
-                </li>
-
-                <li class="menu-item">
-                    <a href="inquiry.php" class="menu-link">
-                        <i class="fas fa-file-invoice"></i>
-                        <span class="menu-label">Inquiry</span>
-                    </a>
-                </li>
-
-                <!-- Delivery Records -->
-                <li class="menu-item">
-                    <a href="delivery-records.php" class="menu-link">
-                        <i class="fas fa-truck"></i>
-                        <span class="menu-label">Delivery Records</span>
-                    </a>
-                </li>
-
-                <!-- Inventory -->
-                <li class="menu-item">
-                    <a href="inventory.php" class="menu-link">
-                        <i class="fas fa-boxes"></i>
-                        <span class="menu-label">Inventory</span>
-                    </a>
-                </li>
-
-                <!-- Andison Manila -->
-                <li class="menu-item">
-                    <a href="andison-manila.php" class="menu-link">
-                        <i class="fas fa-truck-fast"></i>
-                        <span class="menu-label">Andison Manila</span>
-                    </a>
-                </li>
-
-                <!-- Client Companies -->
-                <li class="menu-item">
-                    <a href="client-companies.php" class="menu-link">
-                        <i class="fas fa-building"></i>
-                        <span class="menu-label">Client Companies</span>
-                    </a>
-                </li>
-
-                <!-- Models (Dropdown) -->
-                <li class="menu-item">
-                    <a href="models.php" class="menu-link">
-                        <i class="fas fa-cube"></i>
-                        <span class="menu-label">Models</span>
-                    </a>
-                </li>
-
-                <!-- Reports -->
-                <li class="menu-item">
-                    <a href="reports.php" class="menu-link">
-                        <i class="fas fa-file-alt"></i>
-                        <span class="menu-label">Reports</span>
-                    </a>
-                </li>
-
-                <!-- Upload Data -->
-                <li class="menu-item">
-                    <a href="upload-data.php" class="menu-link">
-                        <i class="fas fa-upload"></i>
-                        <span class="menu-label">Upload Data</span>
-                    </a>
-                </li>
-
-                <!-- Warranty Items -->
-                <li class="menu-item">
-                    <a href="warranty-replacements.php" class="menu-link">
-                        <i class="fas fa-wrench"></i>
-                        <span class="menu-label">Warranty Items</span>
-                    </a>
-                </li>
-
-                <!-- Settings -->
-                <li class="menu-item active">
-                    <a href="settings.php" class="menu-link">
-                        <i class="fas fa-cog"></i>
-                        <span class="menu-label">Settings</span>
-                    </a>
-                </li>
-            </ul>
-        </div>
-
-        <!-- Sidebar Footer -->
-        <div class="sidebar-footer">
-            <p class="company-info">Andison Industrial</p>
-            <p class="company-year">© 2025</p>
-        </div>
-    </aside>
+    <?php require __DIR__ . '/sidebar.php'; ?>
 
     <!-- MAIN CONTENT -->
     <main class="main-content" id="mainContent">
@@ -1184,3 +1070,4 @@ if (empty($_SESSION['user_id'])) {
     </style>
 </body>
 </html>
+

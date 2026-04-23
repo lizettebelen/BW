@@ -1,0 +1,18 @@
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+# Legacy maintenance tool routes moved from root to scripts/maintenance
+RewriteRule ^cleanup-inventory\.php$ scripts/maintenance/cleanup-inventory.php [L,NC]
+RewriteRule ^clear-inventory\.php$ scripts/maintenance/clear-inventory.php [L,NC]
+RewriteRule ^complete-diagnostic\.php$ scripts/maintenance/complete-diagnostic.php [L,NC]
+RewriteRule ^demo_inventory\.php$ scripts/maintenance/demo_inventory.php [L,NC]
+RewriteRule ^diagnose\.php$ scripts/maintenance/diagnose.php [L,NC]
+RewriteRule ^find_company\.php$ scripts/maintenance/find_company.php [L,NC]
+RewriteRule ^fix_corrupt_qty\.php$ scripts/maintenance/fix_corrupt_qty.php [L,NC]
+RewriteRule ^fix-missing-rows\.php$ scripts/maintenance/fix-missing-rows.php [L,NC]
+RewriteRule ^full-debug\.php$ scripts/maintenance/full-debug.php [L,NC]
+RewriteRule ^populate-direct\.php$ scripts/maintenance/populate-direct.php [L,NC]
+RewriteRule ^populate-groupings\.php$ scripts/maintenance/populate-groupings.php [L,NC]
+RewriteRule ^restore_test_data\.php$ scripts/maintenance/restore_test_data.php [L,NC]
+RewriteRule ^show_inventory\.php$ scripts/maintenance/show_inventory.php [L,NC]
+</IfModule>

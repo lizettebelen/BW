@@ -16,36 +16,17 @@ try {
 
     // Try to get last backup time from settings table
     try {
-        if ($conn instanceof mysqli) {
-            // Check if settings table exists
-            $result = $conn->query("SHOW TABLES LIKE 'settings'");
+        // Check if settings table exists
+        $result = $conn->query("SHOW TABLES LIKE 'settings'");
+        if ($result && $result->num_rows > 0) {
+            $query = "SELECT last_backup FROM settings ORDER BY id DESC LIMIT 1";
+            $result = $conn->query($query);
+
             if ($result && $result->num_rows > 0) {
-                $query = "SELECT last_backup FROM settings ORDER BY id DESC LIMIT 1";
-                $result = $conn->query($query);
-                
-                if ($result && $result->num_rows > 0) {
-                    $row = $result->fetch_assoc();
-                    if ($row['last_backup']) {
-                        // Format the timestamp
-                        $date = new DateTime($row['last_backup']);
-                        $lastBackup = $date->format('M d, Y h:i A');
-                    }
-                }
-            }
-        } else {
-            // SQLite
-            $result = $conn->query("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'");
-            if ($result && $result->num_rows > 0) {
-                $query = "SELECT last_backup FROM settings ORDER BY id DESC LIMIT 1";
-                $result = $conn->query($query);
-                
-                if ($result && $result->num_rows > 0) {
-                    $row = $result->fetch_assoc();
-                    if ($row['last_backup']) {
-                        // Format the timestamp
-                        $date = new DateTime($row['last_backup']);
-                        $lastBackup = $date->format('M d, Y h:i A');
-                    }
+                $row = $result->fetch_assoc();
+                if ($row['last_backup']) {
+                    $date = new DateTime($row['last_backup']);
+                    $lastBackup = $date->format('M d, Y h:i A');
                 }
             }
         }
