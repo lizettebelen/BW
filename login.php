@@ -43,7 +43,7 @@ if (!empty($_SESSION['user_id'])) {
                         <i class="fas fa-wind"></i>
                     </div>
                     <span class="brand-name">BW&nbsp;Dashboard</span>
-                </div>
+                </div> 
  
                 <h1 class="login-title">Welcome Back</h1>
                 <p class="login-subtitle">Enter your credentials to access your account</p>
