@@ -35,6 +35,14 @@ $exportUnits = 0;
 $exportOrders = 0;
 $exportActiveClients = 0;
 $exportDeliveries = [];
+$warrantyRecords = [];
+$warrantyTotalItems = 0;
+$warrantyTotalQty = 0;
+$warrantyPending = 0;
+$warrantyApproved = 0;
+$warrantyReplaced = 0;
+$warrantyCancelled = 0;
+$exportWarrantyRecords = [];
 
 // Get total units delivered
 $result = $conn->query("SELECT COUNT(*) as total_orders, COALESCE(SUM(quantity), 0) as total_units FROM delivery_records WHERE 1=1$dataset_filter");
@@ -116,6 +124,43 @@ $result = $conn->query("SELECT delivery_month, SUM(quantity) as total_qty, COUNT
 if ($result) {
     while ($row = $result->fetch_assoc()) {
         $monthlyBreakdown[] = $row;
+    }
+}
+
+// Get warranty records (filtered by selected dataset)
+$warrantyTableExists = false;
+$checkWarrantyTable = $conn->query("SHOW TABLES LIKE 'warranty_replacements'");
+if ($checkWarrantyTable && $checkWarrantyTable->num_rows > 0) {
+    $warrantyTableExists = true;
+}
+
+if ($warrantyTableExists) {
+    $result = $conn->query("SELECT * FROM warranty_replacements WHERE 1=1$dataset_filter ORDER BY warranty_date DESC, id DESC");
+    if ($result) {
+        while ($row = $result->fetch_assoc()) {
+            $warrantyRecords[] = $row;
+            $warrantyTotalItems++;
+            $warrantyTotalQty += intval($row['quantity'] ?? 0);
+
+            $status = strtolower(trim((string)($row['status'] ?? '')));
+            if (strpos($status, 'pending') !== false) {
+                $warrantyPending++;
+            } elseif (strpos($status, 'approved') !== false) {
+                $warrantyApproved++;
+            } elseif (strpos($status, 'replace') !== false) {
+                $warrantyReplaced++;
+            } elseif (strpos($status, 'cancel') !== false) {
+                $warrantyCancelled++;
+            }
+        }
+    }
+
+    // Export includes all warranty records in system (not only filtered dataset)
+    $result = $conn->query("SELECT * FROM warranty_replacements ORDER BY warranty_date DESC, id DESC");
+    if ($result) {
+        while ($row = $result->fetch_assoc()) {
+            $exportWarrantyRecords[] = $row;
+        }
     }
 }
 ?>
@@ -734,6 +779,7 @@ if ($result) {
             <button class="filter-btn" onclick="filterReports('analytics')">Analytics</button>
             <button class="filter-btn" onclick="filterReports('delivery')">Delivery</button>
             <button class="filter-btn" onclick="filterReports('financial')">Financial</button>
+            <button class="filter-btn" onclick="filterReports('warranty')">Warranty</button>
         </div>
 
         <div class="reports-grid">
@@ -808,6 +854,19 @@ if ($result) {
                 </div>
                 <div class="report-title">Product Model Report</div>
                 <div class="report-description">Sales by model, performance metrics, and product popularity</div>
+                <div class="report-actions">
+                    <button class="btn-report">View</button>
+                    <button class="btn-report">CSV</button>
+                    <button class="btn-report">XLSX</button>
+                </div>
+            </div>
+
+            <div class="report-card" data-category="warranty">
+                <div class="report-icon">
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+                <div class="report-title">Warranty Items Report</div>
+                <div class="report-description">Warranty replacements, statuses, affected clients, and complete warranty item list</div>
                 <div class="report-actions">
                     <button class="btn-report">View</button>
                     <button class="btn-report">CSV</button>
@@ -1244,6 +1303,41 @@ if ($result) {
                     </table>
                     <?php endif; ?>
                 `
+            },
+            'Warranty Items Report': {
+                title: 'Warranty Items Report',
+                date: new Date().toLocaleDateString(),
+                content: `
+                    <h3>Warranty Summary</h3>
+                    <p><strong>Total Warranty Items:</strong> <?php echo number_format($warrantyTotalItems); ?></p>
+                    <p><strong>Total Warranty Quantity:</strong> <?php echo number_format($warrantyTotalQty); ?></p>
+                    <p><strong>Pending:</strong> <?php echo number_format($warrantyPending); ?> | <strong>Approved:</strong> <?php echo number_format($warrantyApproved); ?> | <strong>Replaced:</strong> <?php echo number_format($warrantyReplaced); ?> | <strong>Cancelled:</strong> <?php echo number_format($warrantyCancelled); ?></p>
+
+                    <h3>Complete Warranty Records (<?php echo count($warrantyRecords); ?> total)</h3>
+                    <?php if (empty($warrantyRecords)): ?>
+                    <p style="color:#a0a0a0;">No warranty items found for current dataset.</p>
+                    <?php else: ?>
+                    <table class="report-table" style="font-size: 11px;">
+                        <thead><tr><th>ID</th><th>Invoice</th><th>Item Code</th><th>Description</th><th>Qty</th><th>Company</th><th>Serial No.</th><th>Warranty Date</th><th>Status</th><th>Dataset</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($warrantyRecords as $rec): ?>
+                            <tr>
+                                <td><?php echo intval($rec['id'] ?? 0); ?></td>
+                                <td><?php echo htmlspecialchars($rec['invoice_no'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($rec['item_code'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($rec['item_name'] ?? ''); ?></td>
+                                <td style="text-align:center;"><?php echo intval($rec['quantity'] ?? 0); ?></td>
+                                <td><?php echo htmlspecialchars($rec['company_name'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($rec['serial_no'] ?? ''); ?></td>
+                                <td><?php echo !empty($rec['warranty_date']) ? htmlspecialchars(date('M j, Y', strtotime($rec['warranty_date']))) : ''; ?></td>
+                                <td><?php echo htmlspecialchars($rec['status'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($rec['dataset_name'] ?? ''); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <?php endif; ?>
+                `
             }
         };
 
@@ -1414,7 +1508,7 @@ if ($result) {
 
         function downloadCurrentReportAs(format = 'PDF') {
             if (currentReportData) {
-                handleExport(`Export ${String(format || 'PDF').toUpperCase()}`);
+                handleExport(`Export ${String(format || 'PDF').toUpperCase()}`, currentReportData.title || '');
             }
         }
         
@@ -1424,7 +1518,7 @@ if ($result) {
 
             // Use unified full-system export for all file exports from report cards.
             if (format === 'PDF' || format === 'CSV' || format === 'XLSX') {
-                handleExport(`Export ${format}`);
+                handleExport(`Export ${format}`, reportName);
                 return;
             }
             
@@ -1540,7 +1634,7 @@ if ($result) {
             }
         }
         
-        function handleExport(action) {
+        function handleExport(action, reportName = '') {
             const formatMatch = action.toUpperCase().match(/CSV|EXCEL|XLSX|PDF/);
             if (!formatMatch) {
                 showNotification('Unsupported export format', 'error');
@@ -1691,8 +1785,179 @@ if ($result) {
                 totalUnits: <?php echo $exportUnits; ?>,
                 totalOrders: <?php echo $exportOrders; ?>,
                 activeClients: <?php echo $exportActiveClients; ?>,
-                allDeliveries: <?php echo json_encode($exportDeliveries); ?>
+                allDeliveries: <?php echo json_encode($exportDeliveries); ?>,
+                allWarrantyRecords: <?php echo json_encode($exportWarrantyRecords); ?>
             };
+
+            const isWarrantyExport = reportName === 'Warranty Items Report';
+
+            function buildWarrantyRowObject(rec) {
+                return {
+                    'Warranty ID': rec.id || '',
+                    'Invoice No.': rec.invoice_no || '',
+                    'Item Code': rec.item_code || '',
+                    'Description': rec.item_name || '',
+                    'Qty.': String(rec.quantity ?? ''),
+                    'UOM': rec.uom || '',
+                    'Serial No.': rec.serial_no || '',
+                    'Company': rec.company_name || '',
+                    'Warranty Date': formatLongDateForExport(rec.warranty_date),
+                    'Status': rec.status || '',
+                    'Dataset': rec.dataset_name || '',
+                    'Remarks': getRemarksForExport(rec)
+                };
+            }
+
+            if (isWarrantyExport) {
+                const warrantyRows = exportData.allWarrantyRecords.map(buildWarrantyRowObject);
+                const warrantyHeaders = Object.keys(buildWarrantyRowObject({}));
+                const warrantyDataRows = warrantyRows.map(row => warrantyHeaders.map(h => row[h]));
+
+                const warrantyStatusSummary = {
+                    pending: 0,
+                    approved: 0,
+                    replaced: 0,
+                    cancelled: 0,
+                    totalQty: 0
+                };
+                exportData.allWarrantyRecords.forEach(rec => {
+                    const status = String(rec.status || '').toLowerCase();
+                    warrantyStatusSummary.totalQty += Number(rec.quantity || 0);
+                    if (status.includes('pending')) warrantyStatusSummary.pending += 1;
+                    else if (status.includes('approved')) warrantyStatusSummary.approved += 1;
+                    else if (status.includes('replace')) warrantyStatusSummary.replaced += 1;
+                    else if (status.includes('cancel')) warrantyStatusSummary.cancelled += 1;
+                });
+
+                if (format === 'PDF') {
+                    const exportHTML = `
+                        <h3>Warranty Summary</h3>
+                        <table>
+                            <tr><th>Metric</th><th>Value</th></tr>
+                            <tr><td>Total Warranty Items</td><td>${warrantyRows.length.toLocaleString()}</td></tr>
+                            <tr><td>Total Warranty Quantity</td><td>${warrantyStatusSummary.totalQty.toLocaleString()}</td></tr>
+                            <tr><td>Pending</td><td>${warrantyStatusSummary.pending.toLocaleString()}</td></tr>
+                            <tr><td>Approved</td><td>${warrantyStatusSummary.approved.toLocaleString()}</td></tr>
+                            <tr><td>Replaced</td><td>${warrantyStatusSummary.replaced.toLocaleString()}</td></tr>
+                            <tr><td>Cancelled</td><td>${warrantyStatusSummary.cancelled.toLocaleString()}</td></tr>
+                        </table>
+                        <h3>Complete Warranty Records (${warrantyRows.length} total)</h3>
+                        <table style="font-size: 11px;">
+                            <tr>${warrantyHeaders.map(h => `<th>${h}</th>`).join('')}</tr>
+                            ${warrantyRows.length ? warrantyRows.map(row => `<tr>${warrantyHeaders.map(h => `<td>${String(row[h] ?? '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${warrantyHeaders.length}">No warranty records available.</td></tr>`}
+                        </table>
+                    `;
+                    openPrintWindow('BW Gas Detector - Warranty Items Export', exportHTML);
+                    showNotification(`✅ Opening warranty export for PDF (${warrantyRows.length} records)...`, 'success');
+                    return;
+                }
+
+                if (format === 'CSV') {
+                    const csvRows = [];
+                    const generatedAt = new Date().toLocaleString();
+                    csvRows.push('BW Gas Detector - Warranty Items Export');
+                    csvRows.push(`Generated: ${generatedAt}`);
+                    csvRows.push('');
+                    csvRows.push('WARRANTY SUMMARY');
+                    csvRows.push(`Total Warranty Items,${warrantyRows.length}`);
+                    csvRows.push(`Total Warranty Quantity,${warrantyStatusSummary.totalQty}`);
+                    csvRows.push(`Pending,${warrantyStatusSummary.pending}`);
+                    csvRows.push(`Approved,${warrantyStatusSummary.approved}`);
+                    csvRows.push(`Replaced,${warrantyStatusSummary.replaced}`);
+                    csvRows.push(`Cancelled,${warrantyStatusSummary.cancelled}`);
+                    csvRows.push('');
+                    csvRows.push(warrantyHeaders.map(escapeCsvCell).join(','));
+                    warrantyRows.forEach(row => {
+                        csvRows.push(warrantyHeaders.map(h => escapeCsvCell(row[h])).join(','));
+                    });
+
+                    const csvContent = '\uFEFF' + csvRows.join('\r\n');
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = `BW_Warranty_Items_Export_${new Date().toISOString().split('T')[0]}.csv`;
+                    link.click();
+                    URL.revokeObjectURL(link.href);
+                    showNotification(`✅ Exporting ${warrantyRows.length} warranty records to CSV...`, 'success');
+                    return;
+                }
+
+                if (format === 'EXCEL' || format === 'XLSX') {
+                    if (typeof ExcelJS === 'undefined') {
+                        showNotification('ExcelJS not loaded. Please use CSV export for warranty data.', 'warning');
+                        return;
+                    }
+
+                    (async () => {
+                        try {
+                            const workbook = new ExcelJS.Workbook();
+                            const sheet = workbook.addWorksheet('Warranty Items');
+
+                            warrantyHeaders.forEach((header, idx) => {
+                                sheet.getColumn(idx + 1).width = Math.max(12, Math.min(34, header.length + 6));
+                            });
+
+                            sheet.mergeCells(1, 1, 1, warrantyHeaders.length);
+                            sheet.getCell(1, 1).value = 'BW Gas Detector - Warranty Items Export';
+                            sheet.getCell(1, 1).font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FF1A5490' } };
+
+                            sheet.mergeCells(2, 1, 2, warrantyHeaders.length);
+                            sheet.getCell(2, 1).value = `Generated: ${new Date().toLocaleString()}`;
+
+                            sheet.getCell(4, 1).value = 'WARRANTY SUMMARY';
+                            sheet.getCell(4, 1).font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FF333333' } };
+                            sheet.getCell(4, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF4D03F' } };
+
+                            const summaryRows = [
+                                ['Total Warranty Items', warrantyRows.length],
+                                ['Total Warranty Quantity', warrantyStatusSummary.totalQty],
+                                ['Pending', warrantyStatusSummary.pending],
+                                ['Approved', warrantyStatusSummary.approved],
+                                ['Replaced', warrantyStatusSummary.replaced],
+                                ['Cancelled', warrantyStatusSummary.cancelled]
+                            ];
+
+                            summaryRows.forEach((entry, i) => {
+                                sheet.getCell(5 + i, 1).value = entry[0];
+                                sheet.getCell(5 + i, 2).value = entry[1];
+                            });
+
+                            const headerRowIndex = 12;
+                            warrantyHeaders.forEach((header, idx) => {
+                                const cell = sheet.getCell(headerRowIndex, idx + 1);
+                                cell.value = header;
+                                cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2F5FA7' } };
+                            });
+
+                            warrantyDataRows.forEach((rowData, rowIdx) => {
+                                const rowNum = headerRowIndex + 1 + rowIdx;
+                                rowData.forEach((value, colIdx) => {
+                                    const cell = sheet.getCell(rowNum, colIdx + 1);
+                                    cell.value = value;
+                                    cell.fill = {
+                                        type: 'pattern',
+                                        pattern: 'solid',
+                                        fgColor: { argb: rowIdx % 2 === 0 ? 'FFFFFFFF' : 'FFF7F9FC' }
+                                    };
+                                });
+                            });
+
+                            const buffer = await workbook.xlsx.writeBuffer();
+                            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                            const link = document.createElement('a');
+                            link.href = URL.createObjectURL(blob);
+                            link.download = `BW_Warranty_Items_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+                            link.click();
+                            URL.revokeObjectURL(link.href);
+                            showNotification(`✅ Exporting ${warrantyRows.length} warranty records to XLSX...`, 'success');
+                        } catch (err) {
+                            showNotification('Failed to generate warranty XLSX. Please try CSV export.', 'error');
+                        }
+                    })();
+                    return;
+                }
+            }
 
             const normalizedRows = exportData.allDeliveries.map(buildRowObject);
             const headers = Object.keys(buildRowObject({}));

@@ -758,7 +758,7 @@ if (empty($_SESSION['user_id'])) {
         </div>
     </main>
 
-    <script src="js/main.js"></script>
+    <script src="js/app.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // Initialize collapsible sections

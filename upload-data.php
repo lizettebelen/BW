@@ -1241,83 +1241,6 @@ if ($conn) {
                 <div id="inventoryUploadStatus" style="margin-top: 15px;"></div>
             </div>
 
-            <!-- Orders Upload Section -->
-            <div class="upload-section">
-                <h2 class="section-title">
-                    <i class="fas fa-file-invoice-dollar"></i>
-                    Import Orders Datasets
-                </h2>
-                <p class="section-subtitle">
-                    <i class="fas fa-lightbulb" style="color: #f4d03f;"></i>
-                    Upload Excel files to import directly to Orders only
-                </p>
-
-                <div class="template-section">
-                    <div class="template-info">
-                        <div class="template-icon">
-                            <i class="fas fa-file-invoice"></i>
-                        </div>
-                        <div class="template-content">
-                            <h4>Order File Format</h4>
-                            <p>Use one row per order line. Common aliases are supported automatically.</p>
-                            <div class="template-columns">
-                                <span><strong>Customer</strong> or <strong>Order Customer</strong></span>
-                                <span><strong>Order Date</strong> or <strong>Date</strong></span>
-                                <span><strong>Item Code</strong> / <strong>Item</strong></span>
-                                <span><strong>Item Name</strong> / <strong>Description</strong></span>
-                                <span><strong>Quantity</strong> / <strong>Qty</strong></span>
-                                <span><strong>Unit Price</strong> / <strong>Price</strong></span>
-                                <span><strong>PO Number</strong> (Optional)</span>
-                                <span><strong>PO Status</strong> (Optional)</span>
-                            </div>
-                            <p style="margin-top: 15px; font-style: italic;">
-                                <i class="fas fa-info-circle" style="color: #f4d03f;"></i>
-                                All imported rows are saved under company name <strong>Orders</strong>.
-                            </p>
-                            <button class="btn-download-template" onclick="downloadOrdersTemplate()">
-                                <i class="fas fa-download"></i> Download Orders Template
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="upload-zone" id="ordersUploadZone" style="margin-top: 20px;">
-                    <div class="upload-icon">
-                        <i class="fas fa-file-excel"></i>
-                    </div>
-                    <h3>Drag orders Excel file here</h3>
-                    <p>or click to select from your computer</p>
-                    <div class="upload-formats">
-                        Supported formats: <strong>.xlsx, .xls, .csv</strong> (Max 10MB)
-                    </div>
-                    <input type="file" id="ordersFileInput" accept=".xlsx,.xls,.csv" style="display: none;" onchange="handleOrdersFileSelect(event)" />
-                </div>
-
-                <div class="file-info" id="ordersFileInfo" style="margin-top: 20px;">
-                    <div class="file-icon">
-                        <i class="fas fa-file-excel"></i>
-                    </div>
-                    <div class="file-details">
-                        <div class="file-name" id="ordersFileName">Selected file</div>
-                        <div class="file-size" id="ordersFileSize">0 bytes</div>
-                    </div>
-                    <button class="file-remove" onclick="resetOrdersFileInput()">
-                        <i class="fas fa-times"></i> Remove
-                    </button>
-                </div>
-
-                <div class="upload-actions" style="margin-top: 25px;">
-                    <button class="btn-upload" id="ordersImportBtn" onclick="importOrdersFile()" style="display: none; flex: 1;">
-                        <i class="fas fa-cloud-upload-alt"></i> Import Orders
-                    </button>
-                    <button class="btn-cancel" onclick="resetOrdersFileInput()" style="flex: 1;">
-                        <i class="fas fa-times"></i> Clear
-                    </button>
-                </div>
-
-                <div id="ordersUploadStatus" style="margin-top: 15px;"></div>
-            </div>
-
             <!-- Preview Section -->
             <div class="upload-section preview-section" id="previewSection">
                 <h2 class="section-title">
@@ -1445,10 +1368,10 @@ if ($conn) {
                         </p>
                         <p class="delete-section-subtitle" style="font-size: 12px;">Choose which datasets to remove and start fresh</p>
                     </div>
-                    <button id="deleteAllDataBtn" type="button" onclick="showDeleteAllDataConfirm()" style="background: linear-gradient(135deg, #c62828 0%, #a61e1e 100%); color: #fff; padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 14px; font-family: 'Poppins', sans-serif; transition: all 0.3s ease; display: flex; align-items: center; gap: 10px; white-space: nowrap; position: relative; z-index: 10; box-shadow: 0 4px 16px rgba(166, 30, 30, 0.35);">
+                    <button id="deleteAllDataBtn" type="button" onclick="showDeleteAllDataConfirm()" style="background: linear-gradient(135deg, #c62828 0%, #a61e1e 100%); color: #fff; padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 14px; font-family: 'Poppins', sans-serif; transition: all 0.3s ease; display: flex; align-items: center; gap: 10px; white-space: nowrap; position: relative; z-index: 10001; box-shadow: 0 4px 16px rgba(166, 30, 30, 0.35); pointer-events: auto; touch-action: auto;">
                         <i class="fas fa-bomb"></i> Delete All Data
                     </button>
-                    <button id="deleteAllBtn" type="button" onclick="showDeleteModal()" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: #fff; padding: 12px 25px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; font-family: 'Poppins', sans-serif; transition: all 0.3s ease; display: flex; align-items: center; gap: 10px; white-space: nowrap; position: relative; z-index: 10;">
+                    <button id="deleteAllBtn" type="button" onclick="showDeleteModal()" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: #fff; padding: 12px 25px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; font-family: 'Poppins', sans-serif; transition: all 0.3s ease; display: flex; align-items: center; gap: 10px; white-space: nowrap; position: relative; z-index: 10001; pointer-events: auto; touch-action: auto;">
                         <i class="fas fa-trash-alt"></i> Manage Data
                     </button>
                     <style>
@@ -3402,7 +3325,11 @@ if ($conn) {
 
         function importInventoryFile() {
             if (!window.pendingInventoryData) {
-                alert('No file data available. Please select a file first.');
+                if (typeof window.showStyledAlert === 'function') {
+                    window.showStyledAlert('No file data available. Please select a file first.', 'Missing File');
+                } else {
+                    alert('No file data available. Please select a file first.');
+                }
                 return;
             }
 
@@ -3519,202 +3446,6 @@ if ($conn) {
             window.pendingInventoryData = null;
         }
 
-        function handleOrdersFileSelect(event) {
-            const file = event.target.files[0];
-            const statusDiv = document.getElementById('ordersUploadStatus');
-            const fileInfo = document.getElementById('ordersFileInfo');
-            const importBtn = document.getElementById('ordersImportBtn');
-
-            if (!file) return;
-
-            const validExtensions = ['xlsx', 'xls', 'csv'];
-            const fileExt = file.name.split('.').pop().toLowerCase();
-            if (!validExtensions.includes(fileExt)) {
-                statusDiv.innerHTML = `
-                    <div style="background: rgba(255, 107, 107, 0.15); border: 1px solid #ff6b6b; border-radius: 8px; padding: 12px; color: #ff6b6b; font-size: 13px; display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-exclamation-circle"></i>
-                        <span>Please upload an Excel/CSV file (.xlsx, .xls, .csv)</span>
-                    </div>
-                `;
-                return;
-            }
-
-            const maxSize = 10 * 1024 * 1024;
-            if (file.size > maxSize) {
-                statusDiv.innerHTML = `
-                    <div style="background: rgba(255, 107, 107, 0.15); border: 1px solid #ff6b6b; border-radius: 8px; padding: 12px; color: #ff6b6b; font-size: 13px; display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-exclamation-circle"></i>
-                        <span>File size exceeds 10MB limit (File size: ${(file.size / 1024 / 1024).toFixed(2)}MB)</span>
-                    </div>
-                `;
-                return;
-            }
-
-            statusDiv.innerHTML = `
-                <div style="background: rgba(244, 208, 63, 0.15); border: 1px solid #f4d03f; border-radius: 8px; padding: 12px; color: #f4d03f; font-size: 13px; display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-spinner fa-spin"></i>
-                    <span>Reading file...</span>
-                </div>
-            `;
-
-            document.getElementById('ordersFileName').textContent = file.name;
-            document.getElementById('ordersFileSize').textContent = (file.size / 1024).toFixed(2) + ' KB';
-            fileInfo.classList.add('show');
-
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    let jsonData = [];
-
-                    if (fileExt === 'csv') {
-                        jsonData = parseCSV(e.target.result);
-                    } else {
-                        const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, { type: 'array' });
-                        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-                        jsonData = XLSX.utils.sheet_to_json(worksheet);
-                    }
-
-                    if (!jsonData || jsonData.length === 0) {
-                        statusDiv.innerHTML = `
-                            <div style="background: rgba(255, 107, 107, 0.15); border: 1px solid #ff6b6b; border-radius: 8px; padding: 12px; color: #ff6b6b; font-size: 13px; display: flex; align-items: center; gap: 10px;">
-                                <i class="fas fa-exclamation-circle"></i>
-                                <span>File is empty or contains no data</span>
-                            </div>
-                        `;
-                        importBtn.style.display = 'none';
-                        return;
-                    }
-
-                    statusDiv.innerHTML = `
-                        <div style="background: rgba(81, 207, 102, 0.15); border: 1px solid #2ecc71; border-radius: 8px; padding: 12px; color: #2ecc71; font-size: 13px; display: flex; align-items: center; gap: 10px;">
-                            <i class="fas fa-check-circle"></i>
-                            <span><strong>${jsonData.length}</strong> order rows detected. Ready to import.</span>
-                        </div>
-                    `;
-                    importBtn.style.display = 'block';
-                    window.pendingOrdersData = { data: jsonData, filename: file.name };
-                } catch (error) {
-                    statusDiv.innerHTML = `
-                        <div style="background: rgba(255, 107, 107, 0.15); border: 1px solid #ff6b6b; border-radius: 8px; padding: 12px; color: #ff6b6b; font-size: 13px; display: flex; align-items: center; gap: 10px;">
-                            <i class="fas fa-exclamation-circle"></i>
-                            <span>Error reading file: ${error.message}</span>
-                        </div>
-                    `;
-                    importBtn.style.display = 'none';
-                }
-            };
-
-            if (fileExt === 'csv') {
-                reader.readAsText(file);
-            } else {
-                reader.readAsArrayBuffer(file);
-            }
-        }
-
-        function importOrdersFile() {
-            if (!window.pendingOrdersData) {
-                alert('No file data available. Please select a file first.');
-                return;
-            }
-
-            const statusDiv = document.getElementById('ordersUploadStatus');
-            const importBtn = document.getElementById('ordersImportBtn');
-
-            importBtn.disabled = true;
-            importBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing...';
-
-            statusDiv.innerHTML = `
-                <div style="background: rgba(244, 208, 63, 0.15); border: 1px solid #f4d03f; border-radius: 8px; padding: 12px; color: #f4d03f; font-size: 13px; display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-spinner fa-spin"></i>
-                    <span>Importing orders data...</span>
-                </div>
-            `;
-
-            fetch('api/import-orders.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(window.pendingOrdersData)
-            })
-            .then(response => response.text().then(text => {
-                if (!text) throw new Error('Empty response from server');
-                try {
-                    return JSON.parse(text);
-                } catch (e) {
-                    throw new Error('Invalid JSON response: ' + text.substring(0, 100));
-                }
-            }))
-            .then(result => {
-                importBtn.disabled = false;
-                importBtn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Import Orders';
-
-                if (result.success) {
-                    statusDiv.innerHTML = `
-                        <div style="background: rgba(46, 204, 113, 0.15); border: 1px solid #2ecc71; border-radius: 8px; padding: 15px; color: #2ecc71; font-size: 13px;">
-                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                                <i class="fas fa-check-circle"></i>
-                                <strong>${result.imported} orders imported successfully!</strong>
-                            </div>
-                            <div style="margin: 8px 0; font-size: 12px;">
-                                Failed rows: ${result.failed || 0}
-                            </div>
-                            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(46, 204, 113, 0.3); display: flex; gap: 10px;">
-                                <a href="orders.php" style="color: #2ecc71; text-decoration: underline; cursor: pointer; font-weight: 600;">
-                                    <i class="fas fa-file-invoice-dollar"></i> View Orders ->
-                                </a>
-                            </div>
-                        </div>
-                    `;
-
-                    setTimeout(() => {
-                        resetOrdersFileInput();
-                    }, 3000);
-                } else {
-                    let errorMsg = result.message || 'Unknown error';
-                    if (result.errors && result.errors.length > 0) {
-                        errorMsg += '<br><br><strong>Errors:</strong><ul style="margin: 10px 0; padding-left: 20px;">';
-                        result.errors.slice(0, 10).forEach(err => {
-                            errorMsg += '<li>' + err + '</li>';
-                        });
-                        if (result.errors.length > 10) {
-                            errorMsg += '<li>... and ' + (result.errors.length - 10) + ' more</li>';
-                        }
-                        errorMsg += '</ul>';
-                    }
-
-                    statusDiv.innerHTML = `
-                        <div style="background: rgba(255, 107, 107, 0.15); border: 1px solid #ff6b6b; border-radius: 8px; padding: 15px; color: #ff6b6b; font-size: 13px;">
-                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                                <i class="fas fa-exclamation-circle"></i>
-                                <strong>Import Failed</strong>
-                            </div>
-                            <div>${errorMsg}</div>
-                        </div>
-                    `;
-                }
-            })
-            .catch(error => {
-                importBtn.disabled = false;
-                importBtn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Import Orders';
-                statusDiv.innerHTML = `
-                    <div style="background: rgba(255, 107, 107, 0.15); border: 1px solid #ff6b6b; border-radius: 8px; padding: 12px; color: #ff6b6b; font-size: 13px;">
-                        <i class="fas fa-exclamation-circle"></i>
-                        <span>${error.message}</span>
-                    </div>
-                `;
-            });
-        }
-
-        function resetOrdersFileInput() {
-            document.getElementById('ordersFileInput').value = '';
-            document.getElementById('ordersFileInfo').classList.remove('show');
-            document.getElementById('ordersUploadStatus').innerHTML = '';
-            document.getElementById('ordersImportBtn').style.display = 'none';
-            window.pendingOrdersData = null;
-        }
-
         // Drag and drop for inventory upload zone
         const inventoryUploadZone = document.getElementById('inventoryUploadZone');
         if (inventoryUploadZone) {
@@ -3743,32 +3474,7 @@ if ($conn) {
             });
         }
 
-        const ordersUploadZone = document.getElementById('ordersUploadZone');
-        if (ordersUploadZone) {
-            ordersUploadZone.addEventListener('click', () => {
-                document.getElementById('ordersFileInput').click();
-            });
 
-            ordersUploadZone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                ordersUploadZone.classList.add('dragover');
-            });
-
-            ordersUploadZone.addEventListener('dragleave', () => {
-                ordersUploadZone.classList.remove('dragover');
-            });
-
-            ordersUploadZone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                ordersUploadZone.classList.remove('dragover');
-
-                const files = e.dataTransfer.files;
-                if (files.length > 0) {
-                    document.getElementById('ordersFileInput').files = files;
-                    handleOrdersFileSelect({ target: { files: files } });
-                }
-            });
-        }
 
         function downloadInventoryTemplate() {
             const ws = XLSX.utils.aoa_to_sheet([
@@ -3793,31 +3499,6 @@ if ($conn) {
             ];
             
             XLSX.writeFile(wb, 'Inventory_Template.xlsx');
-        }
-
-        function downloadOrdersTemplate() {
-            const ws = XLSX.utils.aoa_to_sheet([
-                ['Order Customer', 'Order Date', 'Item Code', 'Item Name', 'Quantity', 'Unit Price', 'PO Number', 'PO Status', 'Invoice No', 'Notes'],
-                ['Sample Customer Inc.', '2025-01-15', 'M1-AF-K1', 'Multi Gas Detector', 2, 12500, 'PO-2025-001', 'Pending', '', 'Urgent order'],
-                ['ABC Industrial', '2025-01-16', 'M2-AF-K2', 'Single Gas Detector', 1, 9800, '', 'No PO', '', '']
-            ]);
-
-            ws['!cols'] = [
-                { wch: 25 },
-                { wch: 14 },
-                { wch: 18 },
-                { wch: 30 },
-                { wch: 10 },
-                { wch: 12 },
-                { wch: 16 },
-                { wch: 12 },
-                { wch: 14 },
-                { wch: 24 }
-            ];
-
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Orders');
-            XLSX.writeFile(wb, 'Orders_Import_Template.xlsx');
         }
 
         // Profile dropdown

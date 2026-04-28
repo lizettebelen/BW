@@ -459,8 +459,28 @@ if ($stats['total_delivered'] > 0 && $months_with_data > 0) {
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"></noscript>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/animations.css">
+    <style>
+        /* Hard override for dashboard header stacking/spacing */
+        body.dashboard-page .navbar {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            z-index: 2147483647 !important;
+        }
+
+        body.dashboard-page {
+            padding-top: 0 !important;
+        }
+
+        body.dashboard-page main.main-content {
+            margin-top: 120px !important;
+            min-height: calc(100vh - 120px) !important;
+            z-index: 1 !important;
+        }
+    </style>
 </head>
-<body>
+<body class="dashboard-page">
     <!-- Page loader: dismissed once all resources are ready -->
     <div id="pageLoader" aria-hidden="true">
         <div class="loader-content">
@@ -989,19 +1009,22 @@ if ($stats['total_delivered'] > 0 && $months_with_data > 0) {
             window.location.href = 'reports.php';
         }
 
-        // Toggle metric insight popup
-        function toggleMetricInsight(card) {
-            const popup = card.querySelector('.metric-insight-popup');
-            const isVisible = popup.classList.contains('show');
-            
-            // Close all other popups first and remove active class
-            document.querySelectorAll('.clickable-insight.insight-active').forEach(c => {
+        function closeAllMetricInsights() {
+            document.querySelectorAll('.clickable-insight').forEach(c => {
                 c.classList.remove('insight-active');
             });
             document.querySelectorAll('.metric-insight-popup.show').forEach(p => {
                 p.classList.remove('show');
             });
-            
+        }
+
+        // Toggle metric insight popup
+        function toggleMetricInsight(card) {
+            const popup = card.querySelector('.metric-insight-popup');
+            const isVisible = popup.classList.contains('show');
+
+            closeAllMetricInsights();
+
             // Toggle current popup
             if (!isVisible) {
                 popup.classList.add('show');
@@ -1012,12 +1035,7 @@ if ($stats['total_delivered'] > 0 && $months_with_data > 0) {
         // Close popup when clicking outside
         document.addEventListener('click', function(e) {
             if (!e.target.closest('.clickable-insight')) {
-                document.querySelectorAll('.clickable-insight.insight-active').forEach(c => {
-                    c.classList.remove('insight-active');
-                });
-                document.querySelectorAll('.metric-insight-popup.show').forEach(p => {
-                    p.classList.remove('show');
-                });
+                closeAllMetricInsights();
             }
         });
 

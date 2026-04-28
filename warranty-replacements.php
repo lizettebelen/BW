@@ -419,6 +419,44 @@ if ($companies_result) {
             opacity: 0.5;
         }
 
+        .warranty-summary-note {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(244, 208, 63, 0.14);
+            border: 1px solid rgba(244, 208, 63, 0.35);
+            border-radius: 8px;
+            color: #dce8f0;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .warranty-summary-note i {
+            color: #f4d03f;
+            margin-right: 8px;
+        }
+
+        .warranty-summary-note strong {
+            color: #ffffff;
+            font-weight: 700;
+        }
+
+        html.light-mode .warranty-summary-note,
+        body.light-mode .warranty-summary-note {
+            background: #fff8d8;
+            border-color: #f2cf63;
+            color: #31465f;
+        }
+
+        html.light-mode .warranty-summary-note i,
+        body.light-mode .warranty-summary-note i {
+            color: #b48200;
+        }
+
+        html.light-mode .warranty-summary-note strong,
+        body.light-mode .warranty-summary-note strong {
+            color: #1d2f45;
+        }
+
         .right-align {
             text-align: right;
         }
@@ -992,8 +1030,8 @@ if ($companies_result) {
             </div>
 
             <!-- Summary -->
-            <div style="margin-top: 20px; padding: 15px; background: rgba(244, 208, 63, 0.1); border: 1px solid rgba(244, 208, 63, 0.3); border-radius: 8px; color: #dce8f0; font-size: 12px;">
-                <i class="fas fa-info-circle" style="color: #f4d03f; margin-right: 8px;"></i>
+            <div class="warranty-summary-note">
+                <i class="fas fa-info-circle"></i>
                 Showing <strong><?php echo count($warranty_records); ?></strong> warranty record(s) with total <strong><?php echo $stats['total_qty']; ?></strong> units
             </div>
         </div>
@@ -1457,7 +1495,13 @@ if ($companies_result) {
         }
 
         async function deleteWarrantyRecord(warrantId) {
-            const ok = await window.confirm('Delete warranty record #' + warrantId + '? This cannot be undone.');
+            let ok = false;
+            if (typeof window.showStyledConfirm === 'function') {
+                const result = await window.showStyledConfirm('Delete warranty record #' + warrantId + '? This cannot be undone.', 'Delete Warranty Record');
+                ok = !!(result && result.confirmed);
+            } else {
+                ok = window.confirm('Delete warranty record #' + warrantId + '? This cannot be undone.');
+            }
             if (!ok) {
                 return;
             }

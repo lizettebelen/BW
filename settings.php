@@ -673,6 +673,61 @@ if (empty($_SESSION['user_id'])) {
                 </div>
             </div>
 
+            <!-- Account Management -->
+            <div class="settings-section">
+                <div class="settings-title">
+                    <i class="fas fa-user-circle"></i> Account Management
+                </div>
+
+                <!-- Change Username Section -->
+                <div style="margin-bottom: 25px; padding-bottom: 25px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                    <h4 style="color: #40538f; margin-bottom: 15px; font-size: 14px; font-weight: 600;">Change Username</h4>
+                    <form id="changeNameForm" style="display: flex; flex-direction: column; gap: 12px;">
+                        <div style="display: flex; flex-direction: column; gap: 5px;">
+                            <label for="newName" style="color: #40538f; font-size: 12px; font-weight: 600;">New Username</label>
+                            <input type="text" id="newName" name="name" placeholder="Enter new username" 
+                                style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 10px 12px; color: #6e6161; font-family: 'Poppins', sans-serif; font-size: 13px;"
+                                required>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 5px;">
+                            <label for="namePassword" style="color: #40538f; font-size: 12px; font-weight: 600;">Current Password (for verification)</label>
+                            <input type="password" id="namePassword" name="password" placeholder="Enter your current password" 
+                                style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 10px 12px; color: #6e6161; font-family: 'Poppins', sans-serif; font-size: 13px;"
+                                required>
+                        </div>
+                        <button type="submit" class="btn-save" style="width: fit-content;">Update Username</button>
+                    </form>
+                    <div id="nameStatus" style="margin-top: 10px; font-size: 12px; display: none;"></div>
+                </div>
+
+                <!-- Change Password Section -->
+                <div>
+                    <h4 style="color: #40538f; margin-bottom: 15px; font-size: 14px; font-weight: 600;">Change Password</h4>
+                    <form id="changePasswordForm" style="display: flex; flex-direction: column; gap: 12px;">
+                        <div style="display: flex; flex-direction: column; gap: 5px;">
+                            <label for="currentPassword" style="color: #40538f; font-size: 12px; font-weight: 600;">Current Password</label>
+                            <input type="password" id="currentPassword" name="current_password" placeholder="Enter your current password" 
+                                style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 10px 12px; color: #6e6161; font-family: 'Poppins', sans-serif; font-size: 13px;"
+                                required>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 5px;">
+                            <label for="newPassword" style="color: #40538f; font-size: 12px; font-weight: 600;">New Password</label>
+                            <input type="password" id="newPassword" name="new_password" placeholder="Enter new password (min 6 characters)" 
+                                style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 10px 12px; color: #6e6161; font-family: 'Poppins', sans-serif; font-size: 13px;"
+                                required>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 5px;">
+                            <label for="confirmPassword" style="color: #40538f; font-size: 12px; font-weight: 600;">Confirm New Password</label>
+                            <input type="password" id="confirmPassword" name="confirm_password" placeholder="Confirm new password" 
+                                style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 10px 12px; color: #6e6161; font-family: 'Poppins', sans-serif; font-size: 13px;"
+                                required>
+                        </div>
+                        <button type="submit" class="btn-save" style="width: fit-content;">Change Password</button>
+                    </form>
+                    <div id="passwordStatus" style="margin-top: 10px; font-size: 12px; display: none;"></div>
+                </div>
+            </div>
+
             <!-- Danger Zone -->
             <div class="settings-section">
                 <div class="settings-title" style="color: #ff6b6b;">
@@ -1054,6 +1109,116 @@ if (empty($_SESSION['user_id'])) {
         // Close modal on outside click
         document.getElementById('alertsModal')?.addEventListener('click', function(e) {
             if (e.target === this) closeAlertsModal();
+        });
+
+        // Load current username on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentName = '<?php echo htmlspecialchars($_SESSION['user_name'] ?? 'User'); ?>';
+            const newNameInput = document.getElementById('newName');
+            if (newNameInput) {
+                newNameInput.value = currentName;
+            }
+        });
+        document.getElementById('changePasswordForm')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            const statusDiv = document.getElementById('passwordStatus');
+            
+            // Basic validation
+            if (newPassword !== confirmPassword) {
+                statusDiv.style.color = '#e74c3c';
+                statusDiv.textContent = 'New passwords do not match';
+                statusDiv.style.display = 'block';
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                statusDiv.style.color = '#e74c3c';
+                statusDiv.textContent = 'Password must be at least 6 characters long';
+                statusDiv.style.display = 'block';
+                return;
+            }
+            
+            try {
+                const response = await fetch('api/change-password.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        current_password: currentPassword,
+                        new_password: newPassword,
+                        confirm_password: confirmPassword
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusDiv.style.color = '#27ae60';
+                    statusDiv.textContent = '✓ Password changed successfully!';
+                    statusDiv.style.display = 'block';
+                    document.getElementById('changePasswordForm').reset();
+                    setTimeout(() => {
+                        statusDiv.style.display = 'none';
+                    }, 3000);
+                } else {
+                    statusDiv.style.color = '#e74c3c';
+                    statusDiv.textContent = '✗ ' + data.message;
+                    statusDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error changing password:', error);
+                statusDiv.style.color = '#e74c3c';
+                statusDiv.textContent = '✗ An error occurred. Please try again.';
+                statusDiv.style.display = 'block';
+            }
+        });
+
+        // Handle Name Change Form
+        document.getElementById('changeNameForm')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const newName = document.getElementById('newName').value;
+            const password = document.getElementById('namePassword').value;
+            const statusDiv = document.getElementById('nameStatus');
+            
+            try {
+                const response = await fetch('api/change-username.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        name: newName,
+                        password: password
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusDiv.style.color = '#27ae60';
+                    statusDiv.textContent = '✓ Username updated successfully!';
+                    statusDiv.style.display = 'block';
+                    document.getElementById('changeNameForm').reset();
+                    setTimeout(() => {
+                        statusDiv.style.display = 'none';
+                    }, 3000);
+                } else {
+                    statusDiv.style.color = '#e74c3c';
+                    statusDiv.textContent = '✗ ' + data.message;
+                    statusDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error changing username:', error);
+                statusDiv.style.color = '#e74c3c';
+                statusDiv.textContent = '✗ An error occurred. Please try again.';
+                statusDiv.style.display = 'block';
+            }
         });
 
         // Dark mode toggle is handled by app.js initializeDarkModeToggle()

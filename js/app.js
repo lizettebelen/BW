@@ -39,6 +39,15 @@ function persistThemeMode(mode) {
     localStorage.setItem('darkMode', mode === 'dark' ? 'true' : 'false');
 }
 
+function syncNavbarOffset() {
+    var navbar = document.querySelector('.navbar');
+    if (!navbar) return;
+
+    // Add a small buffer so cards/panels never touch or overlap the fixed header.
+    var navbarHeight = Math.ceil(navbar.getBoundingClientRect().height) + 6;
+    document.documentElement.style.setProperty('--navbar-height', navbarHeight + 'px');
+}
+
 // Apply saved theme immediately (before DOMContentLoaded to avoid flash)
 (function () {
     var isLight = isLightThemeMode();
@@ -86,9 +95,245 @@ const VIBRANT_COLORS = {
     violet: '#8338ec'
 };
 
+// ============================================
+// STYLED POPUP DIALOGS (ALERT / CONFIRM / PROMPT)
+// ============================================
+
+function ensureStyledDialogAssets() {
+    if (document.getElementById('bwDialogStyles')) {
+        return;
+    }
+
+    const style = document.createElement('style');
+    style.id = 'bwDialogStyles';
+    style.textContent = `
+        .bw-dialog-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            background: rgba(8, 13, 23, 0.62);
+            backdrop-filter: blur(4px);
+            z-index: 100000;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        .bw-dialog-overlay.active {
+            opacity: 1;
+        }
+        .bw-dialog {
+            width: min(92vw, 460px);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: linear-gradient(155deg, #1d2f49 0%, #213b61 60%, #192a44 100%);
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+            color: #e8edf5;
+            font-family: 'Poppins', sans-serif;
+            transform: translateY(10px) scale(0.98);
+            transition: transform 0.2s ease;
+        }
+        .bw-dialog-overlay.active .bw-dialog {
+            transform: translateY(0) scale(1);
+        }
+        .bw-dialog-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 18px 20px 12px;
+            font-size: 18px;
+            font-weight: 600;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .bw-dialog-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            background: rgba(244, 208, 63, 0.16);
+            color: #f4d03f;
+            font-size: 16px;
+        }
+        .bw-dialog-body {
+            padding: 16px 20px 20px;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #d9e2f0;
+        }
+        .bw-dialog-input {
+            width: 100%;
+            margin-top: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            background: rgba(8, 14, 26, 0.5);
+            color: #ffffff;
+            border-radius: 10px;
+            padding: 11px 12px;
+            outline: none;
+            font-size: 14px;
+            font-family: 'Poppins', sans-serif;
+        }
+        .bw-dialog-input:focus {
+            border-color: #f4d03f;
+            box-shadow: 0 0 0 3px rgba(244, 208, 63, 0.15);
+        }
+        .bw-dialog-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 0 20px 20px;
+        }
+        .bw-dialog-btn {
+            border: none;
+            border-radius: 10px;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Poppins', sans-serif;
+        }
+        .bw-dialog-btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #dbe4f3;
+        }
+        .bw-dialog-btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.16);
+        }
+        .bw-dialog-btn-primary {
+            background: linear-gradient(135deg, #f4d03f, #e2b914);
+            color: #1b2435;
+        }
+        .bw-dialog-btn-primary:hover {
+            filter: brightness(1.04);
+        }
+    `;
+
+    document.head.appendChild(style);
+}
+
+function showStyledDialog(options) {
+    ensureStyledDialogAssets();
+
+    const type = options.type || 'alert';
+    const title = options.title || 'Message';
+    const message = options.message || '';
+    const initialValue = options.initialValue || '';
+
+    return new Promise(function(resolve) {
+        const overlay = document.createElement('div');
+        overlay.className = 'bw-dialog-overlay';
+
+        const icon = type === 'prompt' ? 'fa-pen' : type === 'confirm' ? 'fa-triangle-exclamation' : 'fa-circle-info';
+        const inputHtml = type === 'prompt' ? `<input class="bw-dialog-input" type="text" value="${String(initialValue).replace(/"/g, '&quot;')}">` : '';
+        const cancelHtml = type === 'confirm' || type === 'prompt'
+            ? '<button type="button" class="bw-dialog-btn bw-dialog-btn-secondary" data-role="cancel">Cancel</button>'
+            : '';
+
+        overlay.innerHTML = `
+            <div class="bw-dialog" role="dialog" aria-modal="true" aria-label="${title}">
+                <div class="bw-dialog-header">
+                    <span class="bw-dialog-icon"><i class="fas ${icon}"></i></span>
+                    <span>${title}</span>
+                </div>
+                <div class="bw-dialog-body">
+                    <div>${message}</div>
+                    ${inputHtml}
+                </div>
+                <div class="bw-dialog-actions">
+                    ${cancelHtml}
+                    <button type="button" class="bw-dialog-btn bw-dialog-btn-primary" data-role="ok">OK</button>
+                </div>
+            </div>
+        `;
+
+        const close = function(result) {
+            overlay.classList.remove('active');
+            setTimeout(function() {
+                overlay.remove();
+                resolve(result);
+            }, 150);
+        };
+
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay && type !== 'alert') {
+                close({ confirmed: false, value: '' });
+            }
+        });
+
+        const okBtn = overlay.querySelector('[data-role="ok"]');
+        const cancelBtn = overlay.querySelector('[data-role="cancel"]');
+        const promptInput = overlay.querySelector('.bw-dialog-input');
+
+        okBtn.addEventListener('click', function() {
+            if (promptInput) {
+                close({ confirmed: true, value: promptInput.value });
+                return;
+            }
+            close({ confirmed: true, value: '' });
+        });
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function() {
+                close({ confirmed: false, value: '' });
+            });
+        }
+
+        document.addEventListener('keydown', function escHandler(e) {
+            if (e.key === 'Escape') {
+                document.removeEventListener('keydown', escHandler);
+                if (type === 'alert') {
+                    close({ confirmed: true, value: '' });
+                } else {
+                    close({ confirmed: false, value: '' });
+                }
+            }
+        }, { once: true });
+
+        document.body.appendChild(overlay);
+        requestAnimationFrame(function() {
+            overlay.classList.add('active');
+            if (promptInput) {
+                promptInput.focus();
+                promptInput.select();
+            } else {
+                okBtn.focus();
+            }
+        });
+    });
+}
+
+window.showStyledAlert = function(message, title) {
+    return showStyledDialog({
+        type: 'alert',
+        title: title || 'Notice',
+        message: message
+    });
+};
+
+window.showStyledConfirm = function(message, title) {
+    return showStyledDialog({
+        type: 'confirm',
+        title: title || 'Please Confirm',
+        message: message
+    });
+};
+
+window.showStyledPrompt = function(message, initialValue, title) {
+    return showStyledDialog({
+        type: 'prompt',
+        title: title || 'Input Required',
+        message: message,
+        initialValue: initialValue || ''
+    });
+};
+
 // Initialize when DOM is fully loaded
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Dashboard Initialized');
+
+    syncNavbarOffset();
     
     // Ensure theme is consistently applied to both html and body
     applyThemeClasses(isLightThemeMode());
@@ -112,6 +357,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize Dataset Synchronization
     initializeDatasetSync();
 });
+
+window.addEventListener('load', syncNavbarOffset);
+window.addEventListener('resize', syncNavbarOffset);
+window.addEventListener('orientationchange', syncNavbarOffset);
 
 // ============================================
 // DISPLAY SETTINGS
@@ -1037,8 +1286,16 @@ function initializeGroupBChart() {
 // LOGOUT FUNCTIONALITY
 // ============================================
 
-function logoutHandler() {
-    if (confirm('Are you sure you want to logout?')) {
+async function logoutHandler() {
+    let confirmed = false;
+    if (typeof window.showStyledConfirm === 'function') {
+        const result = await window.showStyledConfirm('Are you sure you want to logout?', 'Confirm Logout');
+        confirmed = !!(result && result.confirmed);
+    } else {
+        confirmed = confirm('Are you sure you want to logout?');
+    }
+
+    if (confirmed) {
         window.location.href = 'logout.php';
     }
 }

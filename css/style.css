@@ -61,6 +61,8 @@ html.light-mode #pageLoader {
 }
 
 :root {
+    --navbar-height: 70px;
+    --dashboard-top-clearance: calc(var(--navbar-height) + 28px);
     --color-dark-bg: #0f172a;
     --color-dark-secondary: #111827;
     --color-sidebar: #111b2d;
@@ -607,10 +609,11 @@ html, body {
     top: 0;
     left: 0;
     right: 0;
-    height: 70px;
+    height: var(--navbar-height);
     background: linear-gradient(135deg, #0f1a2d 0%, #142238 50%, #182b45 100%);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
-    z-index: 1000;
+    z-index: 10000;
+    isolation: isolate;
 }
 
 .navbar-container {
@@ -1029,9 +1032,9 @@ body.light-mode .notification:hover {
 .sidebar {
     position: fixed;
     left: 0;
-    top: 70px;
+    top: var(--navbar-height);
     width: 250px;
-    height: calc(100vh - 70px);
+    height: calc(100vh - var(--navbar-height));
     background: var(--color-sidebar);
     border-right: 1px solid var(--color-border);
     display: flex;
@@ -1186,14 +1189,41 @@ body.light-mode .notification:hover {
 
 .main-content {
     margin-left: 250px;
-    margin-top: 70px;
-    min-height: calc(100vh - 70px);
+    margin-top: var(--navbar-height);
+    min-height: calc(100vh - var(--navbar-height));
     padding: 30px;
+    position: relative;
+    z-index: 0;
+    isolation: isolate;
     transition: var(--transition);
 }
 
 .main-content.sidebar-collapsed {
     margin-left: 70px;
+}
+
+/* Dashboard-specific hard layering guard for fixed header */
+body.dashboard-page {
+    padding-top: var(--dashboard-top-clearance);
+}
+
+body.dashboard-page .navbar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 2147483000 !important;
+    transform: translateZ(0);
+    will-change: transform;
+}
+
+body.dashboard-page .sidebar {
+    top: var(--navbar-height) !important;
+    height: calc(100vh - var(--navbar-height)) !important;
+}
+
+body.dashboard-page .main-content {
+    margin-top: 0 !important;
 }
 
 /* ============================================
@@ -1749,7 +1779,7 @@ html.light-mode .btn-industrial.secondary {
 }
 
 .clickable-insight.insight-active {
-    z-index: 9998;
+    z-index: 2;
 }
 
 .clickable-insight:hover .insight-toggle {
@@ -1781,19 +1811,18 @@ html.light-mode .btn-industrial.secondary {
 }
 
 .metric-insight-popup {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
+    position: static;
     background: var(--color-dark-secondary);
     border: 1px solid var(--color-accent);
     border-radius: 8px;
     padding: 12px;
-    margin-top: 8px;
+    margin-top: 10px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-    z-index: 9999;
+    z-index: auto;
     display: none;
     animation: fadeInDown 0.2s ease;
+    grid-column: 1 / -1;
+    width: 100%;
 }
 
 .metric-insight-popup.show {
@@ -1859,8 +1888,13 @@ html.light-mode .btn-industrial.secondary {
     border-radius: 12px;
     padding: 20px;
     display: flex;
+    flex-wrap: wrap;
     gap: 15px;
     position: relative;
+}
+
+.summary-card .metric-insight-popup {
+    flex-basis: 100%;
 }
 
 .summary-card.primary {

@@ -39,6 +39,78 @@ CREATE TABLE IF NOT EXISTS `delivery_records` (
   UNIQUE KEY `unique_delivery` (`delivery_month`, `delivery_day`, `delivery_year`, `item_code`, `company_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Stores delivery records for BW Gas Detector products';
 
+-- Logical views for phpMyAdmin visibility by module/category
+CREATE OR REPLACE VIEW `vw_inventory` AS
+SELECT *
+FROM `delivery_records`
+WHERE `company_name` = 'Stock Addition';
+
+CREATE OR REPLACE VIEW `vw_purchase_orders` AS
+SELECT *
+FROM `delivery_records`
+WHERE `company_name` = 'Orders';
+
+CREATE OR REPLACE VIEW `vw_andison_manila` AS
+SELECT *
+FROM `delivery_records`
+WHERE LOWER(TRIM(COALESCE(`company_name`, ''))) IN ('andison manila', 'to andison manila')
+   OR LOWER(TRIM(COALESCE(`sold_to`, ''))) IN ('andison manila', 'to andison manila');
+
+CREATE OR REPLACE VIEW `vw_sales` AS
+SELECT *
+FROM `delivery_records`
+WHERE `quantity` > 0
+  AND `company_name` NOT IN ('Stock Addition', 'Orders')
+  AND LOWER(TRIM(COALESCE(`company_name`, ''))) NOT IN ('andison manila', 'to andison manila');
+
+CREATE OR REPLACE VIEW `vw_inquiry` AS
+SELECT *
+FROM `delivery_records`
+WHERE `company_name` = 'Orders'
+  AND (COALESCE(`po_status`, '') = '' OR `po_status` IN ('No PO', 'Pending'));
+
+CREATE OR REPLACE VIEW `vw_delivery` AS
+SELECT *
+FROM `delivery_records`
+WHERE `company_name` != 'Orders'
+  AND LOWER(TRIM(COALESCE(`company_name`, ''))) NOT IN ('andison manila', 'to andison manila')
+  AND LOWER(TRIM(COALESCE(`sold_to`, ''))) NOT IN ('andison manila', 'to andison manila');
+
+CREATE OR REPLACE VIEW `vw_datasets` AS
+SELECT
+  COALESCE(NULLIF(TRIM(`dataset_name`), ''), 'UNASSIGNED') AS dataset_name,
+  COUNT(*) AS total_records,
+  COALESCE(SUM(`quantity`), 0) AS total_quantity,
+  MIN(`created_at`) AS first_record_at,
+  MAX(`created_at`) AS last_record_at
+FROM `delivery_records`
+GROUP BY COALESCE(NULLIF(TRIM(`dataset_name`), ''), 'UNASSIGNED');
+
+-- Alias views that match module names in phpMyAdmin list
+CREATE OR REPLACE VIEW `inventory` AS
+SELECT * FROM `vw_inventory`;
+
+CREATE OR REPLACE VIEW `purchase_order` AS
+SELECT * FROM `vw_purchase_orders`;
+
+CREATE OR REPLACE VIEW `andison_manila` AS
+SELECT * FROM `vw_andison_manila`;
+
+CREATE OR REPLACE VIEW `sales` AS
+SELECT * FROM `vw_sales`;
+
+CREATE OR REPLACE VIEW `inquiry` AS
+SELECT * FROM `vw_inquiry`;
+
+CREATE OR REPLACE VIEW `delivery` AS
+SELECT * FROM `vw_delivery`;
+
+CREATE OR REPLACE VIEW `datasets` AS
+SELECT * FROM `vw_datasets`;
+
+CREATE OR REPLACE VIEW `warranty` AS
+SELECT * FROM `warranty_replacements`;
+
 -- Insert sample data (optional)
 INSERT INTO delivery_records (delivery_month, delivery_day, item_code, item_name, company_name, sold_to, quantity, status, highlight_color, cell_styles, notes)
 VALUES 

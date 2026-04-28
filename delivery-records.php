@@ -3828,7 +3828,11 @@ if (empty($allItems)) {
         async function renameDataset() {
             const newName = document.getElementById('newDatasetName').value.trim();
             if (!newName) {
-                alert('Please enter a new name');
+                if (typeof window.showStyledAlert === 'function') {
+                    await window.showStyledAlert('Please enter a new name', 'Validation');
+                } else {
+                    alert('Please enter a new name');
+                }
                 return;
             }
             
@@ -3862,7 +3866,15 @@ if (empty($allItems)) {
         }
         
         async function deleteDataset() {
-            if (!confirm(`Are you sure you want to DELETE all records in "${currentDatasetToManage.toUpperCase()}"? This cannot be undone!`)) {
+            let confirmed = false;
+            if (typeof window.showStyledConfirm === 'function') {
+                const result = await window.showStyledConfirm(`Are you sure you want to DELETE all records in "${currentDatasetToManage.toUpperCase()}"? This cannot be undone!`, 'Delete Dataset');
+                confirmed = !!(result && result.confirmed);
+            } else {
+                confirmed = confirm(`Are you sure you want to DELETE all records in "${currentDatasetToManage.toUpperCase()}"? This cannot be undone!`);
+            }
+
+            if (!confirmed) {
                 return;
             }
             

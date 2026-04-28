@@ -5,6 +5,10 @@ $db_user = 'root';
 $db_pass = '';
 $db_name = 'bw_gas_detector';
 
+if (!defined('APP_REQUIRED_DB_NAME')) {
+    define('APP_REQUIRED_DB_NAME', 'bw_gas_detector');
+}
+
 $conn = null;
 
 // Use MySQL so the database is managed in phpMyAdmin.
@@ -13,6 +17,14 @@ mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 try {
     $conn = new mysqli($db_host, $db_user, $db_pass, $db_name);
     $conn->set_charset('utf8mb4');
+
+    $activeDbResult = $conn->query('SELECT DATABASE() AS db_name');
+    $activeDbRow = $activeDbResult ? $activeDbResult->fetch_assoc() : null;
+    $activeDbName = isset($activeDbRow['db_name']) ? (string) $activeDbRow['db_name'] : '';
+
+    if ($activeDbName !== APP_REQUIRED_DB_NAME) {
+        throw new RuntimeException('Connected database mismatch. Expected ' . APP_REQUIRED_DB_NAME . ', got ' . ($activeDbName ?: 'NULL') . '.');
+    }
 
     if (session_status() === PHP_SESSION_NONE) {
         @session_start();
@@ -73,6 +85,7 @@ try {
 
     safeSchemaUpgrade($conn, "ALTER TABLE users ADD COLUMN two_factor_secret VARCHAR(32) DEFAULT NULL");
     safeSchemaUpgrade($conn, "ALTER TABLE users ADD COLUMN two_factor_enabled TINYINT(1) DEFAULT 0");
+        safeSchemaUpgrade($conn, "ALTER TABLE users ADD COLUMN profile_picture VARCHAR(500) DEFAULT NULL");
 
     // Keep owner field sticky for inserts made through the scoped view.
     $conn->query('DROP TRIGGER IF EXISTS trg_delivery_records_set_owner');
@@ -84,7 +97,7 @@ try {
     http_response_code(500);
     die(json_encode([
         'success' => false,
-        'message' => 'MySQL connection failed. Create/import the bw_gas_detector database in phpMyAdmin first.',
+        'message' => 'MySQL bw_gas_detector connection failed. Create/import the bw_gas_detector database in phpMyAdmin first.',
         'error'   => $e->getMessage(),
     ]));
 }

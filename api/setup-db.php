@@ -6,7 +6,7 @@
 
 header('Content-Type: application/json');
 
-// Use the main database config which handles MySQL/SQLite fallback
+// Use the main MySQL database config (bw_gas_detector)
 require_once __DIR__ . '/../db_config.php';
 
 // Check if connection is available (already established in db_config.php)
@@ -17,7 +17,14 @@ if (!$conn || $conn->connect_error) {
     ]));
 }
 
-// For MySQL connections, ensure the table exists with ALL required columns
+if (!($conn instanceof mysqli)) {
+    die(json_encode([
+        'success' => false,
+        'message' => 'MySQL connection required. Active database must be bw_gas_detector.'
+    ]));
+}
+
+// Ensure the table exists with ALL required columns
 if ($conn instanceof mysqli) {
     // Create delivery_records table if it doesn't exist (no UNIQUE constraint to allow re-imports)
     $sql_create_table = "CREATE TABLE IF NOT EXISTS `delivery_records` (
@@ -77,14 +84,88 @@ if ($conn instanceof mysqli) {
         }
     }
 
+    // Create logical category views so they appear separately in phpMyAdmin.
+    $conn->query("CREATE OR REPLACE VIEW `vw_inventory` AS
+        SELECT *
+        FROM `delivery_records`
+        WHERE `company_name` = 'Stock Addition'");
+
+    $conn->query("CREATE OR REPLACE VIEW `vw_purchase_orders` AS
+        SELECT *
+        FROM `delivery_records`
+        WHERE `company_name` = 'Orders'");
+
+    $conn->query("CREATE OR REPLACE VIEW `vw_andison_manila` AS
+        SELECT *
+        FROM `delivery_records`
+        WHERE LOWER(TRIM(COALESCE(`company_name`, ''))) IN ('andison manila', 'to andison manila')
+           OR LOWER(TRIM(COALESCE(`sold_to`, ''))) IN ('andison manila', 'to andison manila')");
+
+    $conn->query("CREATE OR REPLACE VIEW `vw_sales` AS
+        SELECT *
+        FROM `delivery_records`
+        WHERE `quantity` > 0
+          AND `company_name` NOT IN ('Stock Addition', 'Orders')
+          AND LOWER(TRIM(COALESCE(`company_name`, ''))) NOT IN ('andison manila', 'to andison manila')");
+
+    $conn->query("CREATE OR REPLACE VIEW `vw_inquiry` AS
+        SELECT *
+        FROM `delivery_records`
+        WHERE `company_name` = 'Orders'
+          AND (COALESCE(`po_status`, '') = '' OR `po_status` IN ('No PO', 'Pending'))");
+
+    $conn->query("CREATE OR REPLACE VIEW `vw_delivery` AS
+        SELECT *
+        FROM `delivery_records`
+        WHERE `company_name` != 'Orders'
+          AND LOWER(TRIM(COALESCE(`company_name`, ''))) NOT IN ('andison manila', 'to andison manila')
+          AND LOWER(TRIM(COALESCE(`sold_to`, ''))) NOT IN ('andison manila', 'to andison manila')");
+
+    $conn->query("CREATE OR REPLACE VIEW `vw_datasets` AS
+        SELECT
+            COALESCE(NULLIF(TRIM(`dataset_name`), ''), 'UNASSIGNED') AS dataset_name,
+            COUNT(*) AS total_records,
+            COALESCE(SUM(`quantity`), 0) AS total_quantity,
+            MIN(`created_at`) AS first_record_at,
+            MAX(`created_at`) AS last_record_at
+        FROM `delivery_records`
+        GROUP BY COALESCE(NULLIF(TRIM(`dataset_name`), ''), 'UNASSIGNED')");
+
+    // Alias views using module names expected in phpMyAdmin list.
+    $conn->query("CREATE OR REPLACE VIEW `inventory` AS
+        SELECT * FROM `vw_inventory`");
+
+    $conn->query("CREATE OR REPLACE VIEW `purchase_order` AS
+        SELECT * FROM `vw_purchase_orders`");
+
+    $conn->query("CREATE OR REPLACE VIEW `andison_manila` AS
+        SELECT * FROM `vw_andison_manila`");
+
+    $conn->query("CREATE OR REPLACE VIEW `sales` AS
+        SELECT * FROM `vw_sales`");
+
+    $conn->query("CREATE OR REPLACE VIEW `inquiry` AS
+        SELECT * FROM `vw_inquiry`");
+
+    $conn->query("CREATE OR REPLACE VIEW `delivery` AS
+        SELECT * FROM `vw_delivery`");
+
+    $conn->query("CREATE OR REPLACE VIEW `datasets` AS
+        SELECT * FROM `vw_datasets`");
+
+    // Warranty table is maintained separately; expose it via module-friendly alias.
+    $hasWarrantyTable = $conn->query("SHOW TABLES LIKE 'warranty_replacements'");
+    if ($hasWarrantyTable && $hasWarrantyTable->num_rows > 0) {
+        $conn->query("CREATE OR REPLACE VIEW `warranty` AS
+            SELECT * FROM `warranty_replacements`");
+    }
+
     // Drop the old restrictive unique constraint if it exists
     $idxResult = $conn->query("SHOW INDEX FROM `delivery_records` WHERE Key_name = 'unique_delivery'");
     if ($idxResult && $idxResult->num_rows > 0) {
         $conn->query("ALTER TABLE `delivery_records` DROP INDEX `unique_delivery`");
     }
 }
-// SQLite tables are already created (with all columns) in db_config.php
-
 // Return success
 echo json_encode([
     'success' => true,

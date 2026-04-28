@@ -2780,12 +2780,28 @@ if ($poItemsQuery) {
             document.getElementById('inventoryUploadStatus').innerHTML = '';
         }
 
-        function clearAllInventory() {
-            if (!confirm('⚠️ WARNING!\n\nThis will DELETE ALL inventory data.\n\nThis action CANNOT be undone.\n\nAre you sure you want to continue?')) {
+        async function clearAllInventory() {
+            let firstConfirm = false;
+            if (typeof window.showStyledConfirm === 'function') {
+                const result = await window.showStyledConfirm('This will DELETE ALL inventory data. This action CANNOT be undone. Are you sure you want to continue?', 'Warning');
+                firstConfirm = !!(result && result.confirmed);
+            } else {
+                firstConfirm = confirm('⚠️ WARNING!\n\nThis will DELETE ALL inventory data.\n\nThis action CANNOT be undone.\n\nAre you sure you want to continue?');
+            }
+
+            if (!firstConfirm) {
                 return;
             }
 
-            if (!confirm('Please confirm again that you want to permanently delete all inventory data.')) {
+            let secondConfirm = false;
+            if (typeof window.showStyledConfirm === 'function') {
+                const result = await window.showStyledConfirm('Please confirm again that you want to permanently delete all inventory data.', 'Final Confirmation');
+                secondConfirm = !!(result && result.confirmed);
+            } else {
+                secondConfirm = confirm('Please confirm again that you want to permanently delete all inventory data.');
+            }
+
+            if (!secondConfirm) {
                 return;
             }
 
@@ -4082,11 +4098,23 @@ if ($poItemsQuery) {
         }
 
         function viewOrderDetails(orderId) {
-            alert('Order details for ID: ' + orderId + '\n\nFull details view coming soon!');
+            if (typeof window.showStyledAlert === 'function') {
+                window.showStyledAlert('Order details for ID: ' + orderId + '\n\nFull details view coming soon!', 'Order Details');
+            } else {
+                alert('Order details for ID: ' + orderId + '\n\nFull details view coming soon!');
+            }
         }
 
-        function confirmDeleteOrder(orderId, itemCode) {
-            if (confirm(`Are you sure you want to delete the order for item ${itemCode}?`)) {
+        async function confirmDeleteOrder(orderId, itemCode) {
+            let confirmed = false;
+            if (typeof window.showStyledConfirm === 'function') {
+                const result = await window.showStyledConfirm(`Are you sure you want to delete the order for item ${itemCode}?`, 'Delete Order');
+                confirmed = !!(result && result.confirmed);
+            } else {
+                confirmed = confirm(`Are you sure you want to delete the order for item ${itemCode}?`);
+            }
+
+            if (confirmed) {
                 deleteOrder(orderId);
             }
         }
